@@ -3,72 +3,80 @@
 #include <vector>
 using namespace std;
 
-//День 1: визначились з розмірами поля
-// Поле 7 рядків х 6 колонок - під літери B та G
 const int ROWS = 7;
 const int COLS = 6;
 
-// День 1: вирішили зберігати поле в динамічній пам'яті (згідно з вимогою курсової роботи)
 bool* active;
-
-// День 2: додаємо підказки (те, які цифри мають зустрічатись у кожному рядку або колонці)
+int* field;        // День 3: масив значень клітинок (які цифри розміщені)
+int* placement;    // День 3: масив індексів кісточок (яка кісточка займає клітинку)
 vector<int>* rowHints;
 vector<int>* colHints;
 
-// День 2: прототипи
 void initData();
 void cleanupData();
+void printLine(int* width);
+void printMenuItem(string* text, int* width);
 void printMenu();
-void printField();
 int safeReadInt(int* minVal, int* maxVal);
+void printField();
 
 int main() {
     initData();
-
     int choice = 0;
     int* ptrChoice = &choice;
     do {
         printMenu();
-        int minV = 0, maxV = 2;
-        // День 2: поки лише 2 пункти меню: показати поле та вийти
-        // TODO: потім додати автоматичний розв'язок та режим гравця 
+        int minV = 0, maxV = 3;
+        // День 3: розширили меню до 3 пунктів
+        // TODO: пункт 1 — автовирішення (день 8+)
+        // TODO: пункт 2 — режим гравця (день 12+)
         *ptrChoice = safeReadInt(&minV, &maxV);
         switch (*ptrChoice) {
-            case 1: printField(); break;
+            case 3: printField(); break;
             case 0: {
-                cout << "\n До побачення! \n";
+                string m = "  До побачення!";
+                int w = 40;
+                printLine(&w);
+                printMenuItem(&m, &w);
+                printLine(&w);
+                cout << "\n";
                 break;
             }
         }
     } while (*ptrChoice != 0);
-    
     cleanupData();
     return 0;
 }
 
 void initData() {
     active = new bool[ROWS * COLS];
+    // День 3: виділяємо пам'ять для нових масивів
+    // BUG: спочатку забули ініціалізувати field і placement — були сміттєві значення
+    // FIX: одразу заповнюємо -1 (означає "порожньо")
+    field = new int[ROWS * COLS];
+    placement = new int[ROWS * COLS];
 
-    // День 1: розклад активних клітинок - літери B та G
     bool initActive[ROWS][COLS] = {
-        {1,1,1, 1,1,1,}, // рядок 0
-        {1,0,1, 1,0,0}, // рядок 1
-        {1,0,1, 1,0,0}, // рядок 2
-        {1,1,1, 1,1,1}, // рядок 3
-        {1,0,1, 1,0,1}, // рядок 4
-        {1,0,1, 1,0,1}, // рядок 5
-        {1,1,1, 1,1,1} // рядок 6
+        {1,1,1, 1,1,1},
+        {1,0,1, 1,0,0},
+        {1,0,1, 1,0,0},
+        {1,1,1, 1,1,1},
+        {1,0,1, 1,0,1},
+        {1,0,1, 1,0,1},
+        {1,1,1, 1,1,1}
     };
 
-    for (int i = 0; i < ROWS; i++)
-      for (int j = 0; j < COLS; j++)
-        *(active + i * COLS + j) = initActive[i][j];
+    for (int i = 0; i < ROWS; i++) {
+        for (int j = 0; j < COLS; j++) {
+            *(active + i * COLS + j) = initActive[i][j];
+            *(field + i * COLS + j) = -1;       // -1 = клітинка порожня
+            *(placement + i * COLS + j) = -1;   // -1 = кісточка не розміщена
+        }
+    }
 
-    // День 2: ініціалізація підказок
     rowHints = new vector<int>[ROWS];
     colHints = new vector<int>[COLS];
 
-    // Заповнюємо лише ті рядки, що мають підказки
     *(rowHints + 0) = {2, 0, 1, 5};
     *(rowHints + 3) = {1, 3, 4};
     *(rowHints + 6) = {0, 2, 3};
@@ -83,20 +91,48 @@ void initData() {
 
 void cleanupData() {
     delete[] active;
-    // День 2: чистимо нову пам'ять
+    delete[] field;      // День 3: чистимо нову пам'ять
+    delete[] placement;  // День 3: чистимо нову пам'ять
     delete[] rowHints;
     delete[] colHints;
 }
 
-// День 2: базове меню без рамок (їх зробимо пізніше)
-void printMenu() {
-    cout << "\n === ГОЛОВОЛОМКА ДОМІНО ===\n";
-    cout << " [1] Показати поле\n";
-    cout << " [0] Вийти\n";
-    cout << " Ваш вибір\n";
+// День 3: функція для друку горизонтальної лінії рамки
+// BUG: спочатку width використовували як значення, а не вказівник — не компілювалось
+// FIX: передаємо int* width і використовуємо *width
+void printLine(int* width) {
+    cout << "+";
+    for (int i = 0; i < *width; i++) cout << "-";
+    cout << "+\n";
 }
 
-// День 2: безпечне читання числа з перевіркою діапазону
+// День 3: функція для друку одного рядка меню з вирівнюванням
+void printMenuItem(string* text, int* width) {
+    cout << "| " << *text;
+    for (int i = (int)text->length(); i < *width - 1; i++) cout << " ";
+    cout << "|\n";
+}
+
+// День 3: меню тепер з красивими рамками замість простого тексту
+void printMenu() {
+    int w = 40;
+    cout << "\n";
+    printLine(&w);
+    string t1 = "        ГОЛОВОЛОМКА ДОМІНО";
+    printMenuItem(&t1, &w);
+    printLine(&w);
+    string t2 = "  [1] Розв'язати автоматично (Турбо)";
+    string t3 = "  [2] Спробувати самому";
+    string t4 = "  [3] Показати поле";
+    string t5 = "  [0] Вийти";
+    printMenuItem(&t2, &w);
+    printMenuItem(&t3, &w);
+    printMenuItem(&t4, &w);
+    printMenuItem(&t5, &w);
+    printLine(&w);
+    cout << "  Ваш вибір: ";
+}
+
 int safeReadInt(int* minVal, int* maxVal) {
     int val;
     string line;
@@ -110,44 +146,44 @@ int safeReadInt(int* minVal, int* maxVal) {
                 try {
                     val = stoi(line);
                     if (val >= *minVal && val <= *maxVal) return val;
-                    cout << "  Число від " << minVal << " до " << *maxVal << ": ";
+                    cout << "  Число від " << *minVal << " до " << *maxVal << ": ";
                 } catch (...) {
-                    cout << " Помилка! Введіть ціле число: ";
+                    cout << "  Помилка! Введіть ціле число: ";
                 }
             } else {
-                cout << " Помилка! Введіть ціле число: ";
+                cout << "  Помилка! Введіть ціле число: ";
             }
         }
     }
 }
 
-// День 2: оновлений printField (додали підказки рядків та колонок)
-
+// День 3: printField тепер виводиться всередині красивої рамки меню
 void printField() {
+    int w = 40;
+    cout << "\n";
+    printLine(&w);
+    string t = "  ПОЛЕ ГОЛОВОЛОМКИ";
+    printMenuItem(&t, &w);
+    printLine(&w);
     cout << "\n  +";
-    for (int j = 0; j < COLS; j++) cout << "---+";
-    cout <<"\n";
-
-    for (int i = 0; i < ROWS; i ++) {
-        cout << " |";
-        for (int j = 0; j < COLS; j++) {
-            if (*(active + i * COLS +j)) cout << " # |";
-            else cout << " |";
-        }
-        cout << "\n +";
-        for (int j = 0; j < COLS; j++) cout << "---+";
-        cout << "\n";
-        
-    // День 2: виводимо підказки рядка праворуч
-    if (!(*(rowHints + i)).empty()) {
-        cout << " <";
-        for (int h : *(rowHints + i)) cout << " " << h;
-    }
-    cout << "\n +";
     for (int j = 0; j < COLS; j++) cout << "---+";
     cout << "\n";
 
-    // День 2: виводимо підказки колонок внизу
+    for (int i = 0; i < ROWS; i++) {
+        cout << "  |";
+        for (int j = 0; j < COLS; j++) {
+            if (*(active + i * COLS + j)) cout << " # |";
+            else cout << "   |";
+        }
+        if (!(*(rowHints + i)).empty()) {
+            cout << "  <";
+            for (int h : *(rowHints + i)) cout << " " << h;
+        }
+        cout << "\n  +";
+        for (int j = 0; j < COLS; j++) cout << "---+";
+        cout << "\n";
+    }
+
     cout << "    ";
     for (int j = 0; j < COLS; j++) cout << "  ^ ";
     cout << "\n";
@@ -155,11 +191,10 @@ void printField() {
         cout << "    ";
         for (int j = 0; j < COLS; j++) {
             if (line < (int)(*(colHints + j)).size())
-            cout << "  " << (*(colHints + j))[line] << " ";
-        else 
-            cout << "    ";
+                cout << "  " << (*(colHints + j))[line] << " ";
+            else
+                cout << "    ";
         }
         cout << "\n";
     }
-
 }
