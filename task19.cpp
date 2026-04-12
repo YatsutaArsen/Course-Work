@@ -7,10 +7,22 @@ const int ROWS = 7;
 const int COLS = 6;
 
 bool* active;
-int* field;        // День 3: масив значень клітинок (які цифри розміщені)
-int* placement;    // День 3: масив індексів кісточок (яка кісточка займає клітинку)
+int* field;
+int* placement;
 vector<int>* rowHints;
 vector<int>* colHints;
+
+// День 4: структура для зберігання однієї кісточки доміно
+struct Domino { int a, b; };
+
+// День 4: масив усіх кісточок (0-0, 0-1, ... 6-6) — всього 28 штук
+Domino* dominoes;
+int* dominoCount;
+
+// День 4: кеш для миттєвого пошуку індексу кісточки за двома значеннями
+// зберігаємо пари (0-6) x (0-6) — тобто 7*7 = 49 комірок
+// звертаємось як [a * 7 + b]
+int* dominoIndexMap;
 
 void initData();
 void cleanupData();
@@ -19,6 +31,7 @@ void printMenuItem(string* text, int* width);
 void printMenu();
 int safeReadInt(int* minVal, int* maxVal);
 void printField();
+void generateDominoes(int* maxVal);
 
 int main() {
     initData();
@@ -27,9 +40,6 @@ int main() {
     do {
         printMenu();
         int minV = 0, maxV = 3;
-        // День 3: розширили меню до 3 пунктів
-        // TODO: пункт 1 — автовирішення (день 8+)
-        // TODO: пункт 2 — режим гравця (день 12+)
         *ptrChoice = safeReadInt(&minV, &maxV);
         switch (*ptrChoice) {
             case 3: printField(); break;
@@ -50,11 +60,13 @@ int main() {
 
 void initData() {
     active = new bool[ROWS * COLS];
-    // День 3: виділяємо пам'ять для нових масивів
-    // BUG: спочатку забули ініціалізувати field і placement — були сміттєві значення
-    // FIX: одразу заповнюємо -1 (означає "порожньо")
     field = new int[ROWS * COLS];
     placement = new int[ROWS * COLS];
+
+    // День 4: виділяємо пам'ять для кісточок і кешу
+    dominoes = new Domino[28];
+    dominoCount = new int(0);
+    dominoIndexMap = new int[7 * 7];
 
     bool initActive[ROWS][COLS] = {
         {1,1,1, 1,1,1},
@@ -69,8 +81,8 @@ void initData() {
     for (int i = 0; i < ROWS; i++) {
         for (int j = 0; j < COLS; j++) {
             *(active + i * COLS + j) = initActive[i][j];
-            *(field + i * COLS + j) = -1;       // -1 = клітинка порожня
-            *(placement + i * COLS + j) = -1;   // -1 = кісточка не розміщена
+            *(field + i * COLS + j) = -1;
+            *(placement + i * COLS + j) = -1;
         }
     }
 
@@ -91,29 +103,28 @@ void initData() {
 
 void cleanupData() {
     delete[] active;
-    delete[] field;      // День 3: чистимо нову пам'ять
-    delete[] placement;  // День 3: чистимо нову пам'ять
+    delete[] field;
+    delete[] placement;
+    // День 4: чистимо нову пам'ять
+    delete[] dominoes;
+    delete dominoCount;     // не delete[] бо це один int, а не масив
+    delete[] dominoIndexMap;
     delete[] rowHints;
     delete[] colHints;
 }
 
-// День 3: функція для друку горизонтальної лінії рамки
-// BUG: спочатку width використовували як значення, а не вказівник — не компілювалось
-// FIX: передаємо int* width і використовуємо *width
 void printLine(int* width) {
     cout << "+";
     for (int i = 0; i < *width; i++) cout << "-";
     cout << "+\n";
 }
 
-// День 3: функція для друку одного рядка меню з вирівнюванням
 void printMenuItem(string* text, int* width) {
     cout << "| " << *text;
     for (int i = (int)text->length(); i < *width - 1; i++) cout << " ";
     cout << "|\n";
 }
 
-// День 3: меню тепер з красивими рамками замість простого тексту
 void printMenu() {
     int w = 40;
     cout << "\n";
@@ -157,7 +168,6 @@ int safeReadInt(int* minVal, int* maxVal) {
     }
 }
 
-// День 3: printField тепер виводиться всередині красивої рамки меню
 void printField() {
     int w = 40;
     cout << "\n";
@@ -196,5 +206,25 @@ void printField() {
                 cout << "    ";
         }
         cout << "\n";
+    }
+}
+
+// День 4: генеруємо всі можливі кісточки від 0-0 до maxVal-maxVal
+// і одразу заповнюємо кеш dominoIndexMap для швидкого пошуку
+void generateDominoes(int* maxVal) {
+    *dominoCount = 0;
+    for (int i = 0; i <= *maxVal; i++) {
+        for (int j = i; j <= *maxVal; j++) {
+            // День 4: зберігаємо кісточку
+            (dominoes + *dominoCount)->a = i;
+            (dominoes + *dominoCount)->b = j;
+
+            // День 4: заповнюємо кеш в обидва боки
+            // 0-1 і 1-0 — це одна й та сама кісточка
+            *(dominoIndexMap + i * 7 + j) = *dominoCount;
+            *(dominoIndexMap + j * 7 + i) = *dominoCount;
+
+            (*dominoCount)++;
+        }
     }
 }
