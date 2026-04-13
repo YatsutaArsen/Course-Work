@@ -12,16 +12,9 @@ int* placement;
 vector<int>* rowHints;
 vector<int>* colHints;
 
-// День 4: структура для зберігання однієї кісточки доміно
 struct Domino { int a, b; };
-
-// День 4: масив усіх кісточок (0-0, 0-1, ... 6-6) — всього 28 штук
 Domino* dominoes;
 int* dominoCount;
-
-// День 4: кеш для миттєвого пошуку індексу кісточки за двома значеннями
-// зберігаємо пари (0-6) x (0-6) — тобто 7*7 = 49 комірок
-// звертаємось як [a * 7 + b]
 int* dominoIndexMap;
 
 void initData();
@@ -32,6 +25,7 @@ void printMenu();
 int safeReadInt(int* minVal, int* maxVal);
 void printField();
 void generateDominoes(int* maxVal);
+void printFieldWithPlacement(); // День 5: новий прототип
 
 int main() {
     initData();
@@ -62,8 +56,6 @@ void initData() {
     active = new bool[ROWS * COLS];
     field = new int[ROWS * COLS];
     placement = new int[ROWS * COLS];
-
-    // День 4: виділяємо пам'ять для кісточок і кешу
     dominoes = new Domino[28];
     dominoCount = new int(0);
     dominoIndexMap = new int[7 * 7];
@@ -105,9 +97,8 @@ void cleanupData() {
     delete[] active;
     delete[] field;
     delete[] placement;
-    // День 4: чистимо нову пам'ять
     delete[] dominoes;
-    delete dominoCount;     // не delete[] бо це один int, а не масив
+    delete dominoCount;
     delete[] dominoIndexMap;
     delete[] rowHints;
     delete[] colHints;
@@ -209,22 +200,80 @@ void printField() {
     }
 }
 
-// День 4: генеруємо всі можливі кісточки від 0-0 до maxVal-maxVal
-// і одразу заповнюємо кеш dominoIndexMap для швидкого пошуку
 void generateDominoes(int* maxVal) {
     *dominoCount = 0;
     for (int i = 0; i <= *maxVal; i++) {
         for (int j = i; j <= *maxVal; j++) {
-            // День 4: зберігаємо кісточку
             (dominoes + *dominoCount)->a = i;
             (dominoes + *dominoCount)->b = j;
-
-            // День 4: заповнюємо кеш в обидва боки
-            // 0-1 і 1-0 — це одна й та сама кісточка
             *(dominoIndexMap + i * 7 + j) = *dominoCount;
             *(dominoIndexMap + j * 7 + i) = *dominoCount;
-
             (*dominoCount)++;
         }
+    }
+}
+
+// День 5: відображення поля з розміщеними кісточками
+// якщо дві сусідні клітинки мають однаковий індекс placement — між ними немає стінки
+// якщо клітинка порожня — виводимо крапку
+void printFieldWithPlacement() {
+    cout << "\n  +";
+    for (int j = 0; j < COLS; j++) cout << "----+";
+    cout << "\n";
+
+    for (int i = 0; i < ROWS; i++) {
+        cout << "  |";
+        for (int j = 0; j < COLS; j++) {
+            if (!*(active + i * COLS + j)) { cout << "    |"; continue; }
+
+            // День 5: визначаємо чи є стінка між поточною і правою клітинкою
+            // якщо обидві належать одній кісточці — стінки немає (пробіл замість |)
+            string rightBorder = "|";
+            if (j + 1 < COLS &&
+                *(active + i * COLS + (j + 1)) &&
+                *(placement + i * COLS + j) != -1 &&
+                *(placement + i * COLS + j) == *(placement + i * COLS + (j + 1))) {
+                rightBorder = " ";
+            }
+
+            if (*(field + i * COLS + j) >= 0)
+                cout << " " << *(field + i * COLS + j) << " " << rightBorder;
+            else
+                cout << " . " << rightBorder; // крапка = клітинка ще порожня
+        }
+
+        if (!(*(rowHints + i)).empty()) {
+            cout << "  <";
+            for (int h : *(rowHints + i)) cout << " " << h;
+        }
+
+        cout << "\n  +";
+        for (int j = 0; j < COLS; j++) {
+            // День 5: визначаємо чи є стінка між поточною і нижньою клітинкою
+            if (i + 1 < ROWS &&
+                *(active + i * COLS + j) &&
+                *(active + (i + 1) * COLS + j) &&
+                *(placement + i * COLS + j) != -1 &&
+                *(placement + i * COLS + j) == *(placement + (i + 1) * COLS + j)) {
+                cout << "    +";
+            } else {
+                cout << "----+";
+            }
+        }
+        cout << "\n";
+    }
+
+    cout << "    ";
+    for (int j = 0; j < COLS; j++) cout << "  ^  ";
+    cout << "\n";
+    for (int line = 0; line < 4; line++) {
+        cout << "    ";
+        for (int j = 0; j < COLS; j++) {
+            if (line < (int)(*(colHints + j)).size())
+                cout << "  " << (*(colHints + j))[line] << "  ";
+            else
+                cout << "     ";
+        }
+        cout << "\n";
     }
 }
