@@ -25,7 +25,9 @@ void printMenu();
 int safeReadInt(int* minVal, int* maxVal);
 void printField();
 void generateDominoes(int* maxVal);
-void printFieldWithPlacement(); // День 5: новий прототип
+void printFieldWithPlacement();
+int utf8len(const string* s);        // День 6: новий прототип
+bool isHintAllowed(int* r, int* c, int* val); // День 6: новий прототип
 
 int main() {
     initData();
@@ -104,15 +106,30 @@ void cleanupData() {
     delete[] colHints;
 }
 
+// День 6: рахуємо реальну кількість символів з урахуванням UTF-8
+// українські літери займають 2-3 байти, тому text->length() давав неправильне значення
+int utf8len(const string* s) {
+    int len = 0;
+    for (int i = 0; i < (int)s->length(); ) {
+        unsigned char c = (*s)[i];
+        if (c < 0x80) i += 1;
+        else if (c < 0xE0) i += 2;
+        else i += 3;
+        len++;
+    }
+    return len;
+}
+
 void printLine(int* width) {
     cout << "+";
     for (int i = 0; i < *width; i++) cout << "-";
     cout << "+\n";
 }
 
+// День 6: замінили text->length() на utf8len() — тепер рамка не з'їжджає
 void printMenuItem(string* text, int* width) {
     cout << "| " << *text;
-    for (int i = (int)text->length(); i < *width - 1; i++) cout << " ";
+    for (int i = utf8len(text); i < *width - 1; i++) cout << " ";
     cout << "|\n";
 }
 
@@ -213,9 +230,6 @@ void generateDominoes(int* maxVal) {
     }
 }
 
-// День 5: відображення поля з розміщеними кісточками
-// якщо дві сусідні клітинки мають однаковий індекс placement — між ними немає стінки
-// якщо клітинка порожня — виводимо крапку
 void printFieldWithPlacement() {
     cout << "\n  +";
     for (int j = 0; j < COLS; j++) cout << "----+";
@@ -226,8 +240,6 @@ void printFieldWithPlacement() {
         for (int j = 0; j < COLS; j++) {
             if (!*(active + i * COLS + j)) { cout << "    |"; continue; }
 
-            // День 5: визначаємо чи є стінка між поточною і правою клітинкою
-            // якщо обидві належать одній кісточці — стінки немає (пробіл замість |)
             string rightBorder = "|";
             if (j + 1 < COLS &&
                 *(active + i * COLS + (j + 1)) &&
@@ -239,7 +251,7 @@ void printFieldWithPlacement() {
             if (*(field + i * COLS + j) >= 0)
                 cout << " " << *(field + i * COLS + j) << " " << rightBorder;
             else
-                cout << " . " << rightBorder; // крапка = клітинка ще порожня
+                cout << " . " << rightBorder;
         }
 
         if (!(*(rowHints + i)).empty()) {
@@ -249,7 +261,6 @@ void printFieldWithPlacement() {
 
         cout << "\n  +";
         for (int j = 0; j < COLS; j++) {
-            // День 5: визначаємо чи є стінка між поточною і нижньою клітинкою
             if (i + 1 < ROWS &&
                 *(active + i * COLS + j) &&
                 *(active + (i + 1) * COLS + j) &&
@@ -276,4 +287,25 @@ void printFieldWithPlacement() {
         }
         cout << "\n";
     }
+}
+
+// День 6: перевіряємо чи дозволено розмістити значення val у клітинці (r, c)
+// якщо рядок має підказки — val має бути серед них
+// якщо колонка має підказки — val має бути серед них
+bool isHintAllowed(int* r, int* c, int* val) {
+    if (!(*(rowHints + *r)).empty()) {
+        bool found = false;
+        for (int h : *(rowHints + *r)) {
+            if (h == *val) { found = true; break; }
+        }
+        if (!found) return false;
+    }
+    if (!(*(colHints + *c)).empty()) {
+        bool found = false;
+        for (int h : *(colHints + *c)) {
+            if (h == *val) { found = true; break; }
+        }
+        if (!found) return false;
+    }
+    return true;
 }
