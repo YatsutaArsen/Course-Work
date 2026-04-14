@@ -19,6 +19,7 @@ int* dominoIndexMap;
 
 void initData();
 void cleanupData();
+int utf8len(const string* s);
 void printLine(int* width);
 void printMenuItem(string* text, int* width);
 void printMenu();
@@ -26,8 +27,10 @@ int safeReadInt(int* minVal, int* maxVal);
 void printField();
 void generateDominoes(int* maxVal);
 void printFieldWithPlacement();
-int utf8len(const string* s);        // День 6: новий прототип
-bool isHintAllowed(int* r, int* c, int* val); // День 6: новий прототип
+bool isHintAllowed(int* r, int* c, int* val);
+bool canSatisfyRow(int* r);       // День 7: новий прототип
+bool canSatisfyCol(int* c);       // День 7: новий прототип
+bool canSatisfyHints(int* r, int* c); // День 7: новий прототип
 
 int main() {
     initData();
@@ -106,8 +109,6 @@ void cleanupData() {
     delete[] colHints;
 }
 
-// День 6: рахуємо реальну кількість символів з урахуванням UTF-8
-// українські літери займають 2-3 байти, тому text->length() давав неправильне значення
 int utf8len(const string* s) {
     int len = 0;
     for (int i = 0; i < (int)s->length(); ) {
@@ -126,7 +127,6 @@ void printLine(int* width) {
     cout << "+\n";
 }
 
-// День 6: замінили text->length() на utf8len() — тепер рамка не з'їжджає
 void printMenuItem(string* text, int* width) {
     cout << "| " << *text;
     for (int i = utf8len(text); i < *width - 1; i++) cout << " ";
@@ -289,9 +289,6 @@ void printFieldWithPlacement() {
     }
 }
 
-// День 6: перевіряємо чи дозволено розмістити значення val у клітинці (r, c)
-// якщо рядок має підказки — val має бути серед них
-// якщо колонка має підказки — val має бути серед них
 bool isHintAllowed(int* r, int* c, int* val) {
     if (!(*(rowHints + *r)).empty()) {
         bool found = false;
@@ -308,4 +305,53 @@ bool isHintAllowed(int* r, int* c, int* val) {
         if (!found) return false;
     }
     return true;
+}
+
+// День 7: перевіряємо чи рядок r ще може бути виконаний
+// рахуємо скільки підказок ще не виконано і скільки порожніх клітинок лишилось
+// якщо порожніх клітинок менше ніж невиконаних підказок — розв'язок неможливий
+bool canSatisfyRow(int* r) {
+    if ((*(rowHints + *r)).empty()) return true;
+    int unfulfilled = 0;
+    for (int h : *(rowHints + *r)) {
+        bool found = false;
+        for (int j = 0; j < COLS; j++) {
+            if (*(active + *r * COLS + j) && *(field + *r * COLS + j) == h) {
+                found = true; break;
+            }
+        }
+        if (!found) unfulfilled++;
+    }
+    int emptyCells = 0;
+    for (int j = 0; j < COLS; j++) {
+        if (*(active + *r * COLS + j) && *(placement + *r * COLS + j) == -1)
+            emptyCells++;
+    }
+    return emptyCells >= unfulfilled;
+}
+
+// День 7: те саме але для колонки c
+bool canSatisfyCol(int* c) {
+    if ((*(colHints + *c)).empty()) return true;
+    int unfulfilled = 0;
+    for (int h : *(colHints + *c)) {
+        bool found = false;
+        for (int i = 0; i < ROWS; i++) {
+            if (*(active + i * COLS + *c) && *(field + i * COLS + *c) == h) {
+                found = true; break;
+            }
+        }
+        if (!found) unfulfilled++;
+    }
+    int emptyCells = 0;
+    for (int i = 0; i < ROWS; i++) {
+        if (*(active + i * COLS + *c) && *(placement + i * COLS + *c) == -1)
+            emptyCells++;
+    }
+    return emptyCells >= unfulfilled;
+}
+
+// День 7: об'єднана перевірка — викликається після кожного розміщення кісточки
+bool canSatisfyHints(int* r, int* c) {
+    return canSatisfyRow(r) && canSatisfyCol(c);
 }
