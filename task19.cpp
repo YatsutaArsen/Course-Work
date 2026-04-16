@@ -16,6 +16,7 @@ struct Domino { int a, b; };
 Domino* dominoes;
 int* dominoCount;
 int* dominoIndexMap;
+bool* used;  // День 8: масив для відстеження використаних кісточок
 
 void initData();
 void cleanupData();
@@ -28,9 +29,11 @@ void printField();
 void generateDominoes(int* maxVal);
 void printFieldWithPlacement();
 bool isHintAllowed(int* r, int* c, int* val);
-bool canSatisfyRow(int* r);       // День 7: новий прототип
-bool canSatisfyCol(int* c);       // День 7: новий прототип
-bool canSatisfyHints(int* r, int* c); // День 7: новий прототип
+bool canSatisfyRow(int* r);
+bool canSatisfyCol(int* c);
+bool canSatisfyHints(int* r, int* c);
+bool checkHints();  // День 8: новий прототип
+bool solve();       // День 8: новий прототип
 
 int main() {
     initData();
@@ -64,6 +67,7 @@ void initData() {
     dominoes = new Domino[28];
     dominoCount = new int(0);
     dominoIndexMap = new int[7 * 7];
+    used = new bool[28];  // День 8: виділяємо пам'ять для масиву використаних кісточок
 
     bool initActive[ROWS][COLS] = {
         {1,1,1, 1,1,1},
@@ -82,6 +86,9 @@ void initData() {
             *(placement + i * COLS + j) = -1;
         }
     }
+
+    // День 8: ініціалізуємо used — жодна кісточка ще не використана
+    for (int i = 0; i < 28; i++) *(used + i) = false;
 
     rowHints = new vector<int>[ROWS];
     colHints = new vector<int>[COLS];
@@ -105,6 +112,7 @@ void cleanupData() {
     delete[] dominoes;
     delete dominoCount;
     delete[] dominoIndexMap;
+    delete[] used;  // День 8: чистимо нову пам'ять
     delete[] rowHints;
     delete[] colHints;
 }
@@ -307,9 +315,6 @@ bool isHintAllowed(int* r, int* c, int* val) {
     return true;
 }
 
-// День 7: перевіряємо чи рядок r ще може бути виконаний
-// рахуємо скільки підказок ще не виконано і скільки порожніх клітинок лишилось
-// якщо порожніх клітинок менше ніж невиконаних підказок — розв'язок неможливий
 bool canSatisfyRow(int* r) {
     if ((*(rowHints + *r)).empty()) return true;
     int unfulfilled = 0;
@@ -330,7 +335,6 @@ bool canSatisfyRow(int* r) {
     return emptyCells >= unfulfilled;
 }
 
-// День 7: те саме але для колонки c
 bool canSatisfyCol(int* c) {
     if ((*(colHints + *c)).empty()) return true;
     int unfulfilled = 0;
@@ -351,7 +355,70 @@ bool canSatisfyCol(int* c) {
     return emptyCells >= unfulfilled;
 }
 
-// День 7: об'єднана перевірка — викликається після кожного розміщення кісточки
 bool canSatisfyHints(int* r, int* c) {
     return canSatisfyRow(r) && canSatisfyCol(c);
+}
+
+// День 8: фінальна перевірка — чи всі підказки виконані після заповнення поля
+bool checkHints() {
+    for (int i = 0; i < ROWS; i++) if (!canSatisfyRow(&i)) return false;
+    for (int j = 0; j < COLS; j++) if (!canSatisfyCol(&j)) return false;
+    return true;
+}
+
+// День 8: базовий solve без MRV — просто перебираємо клітинки зліва направо
+// для кожної порожньої клітинки пробуємо всі сусідні і всі можливі кісточки
+// якщо підказки порушуються — відкатуємось назад (backtracking)
+// TODO: завтра додамо MRV для вибору найбільш обмеженої клітинки
+bool solve() {
+    // шукаємо першу порожню клітинку
+    int r = -1, c = -1;
+    for (int i = 0; i < ROWS && r == -1; i++) {
+        for (int j = 0; j < COLS && r == -1; j++) {
+            if (*(active + i * COLS + j) && *(placement + i * COLS + j) == -1) {
+                r = i; c = j;
+            }
+        }
+    }
+
+    // всі клітинки заповнені — перевіряємо підказки
+    if (r == -1) return checkHints();
+
+    int dr[] = {0, 1, 0, -1};
+    int dc[] = {1, 0, -1, 0};
+
+    for (int i = 0; i < 4; i++) {
+        int nr = r + *(dr + i), nc = c + *(dc + i);
+        if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+        if (!*(active + nr * COLS + nc)) continue;
+        if (*(placement + nr * COLS + nc) != -1) continue;
+
+        for (int v1 = 0; v1 <= 6; v1++) {
+            if (!isHintAllowed(&r, &c, &v1)) continue;
+            for (int v2 = 0; v2 <= 6; v2++) {
+                if (!isHintAllowed(&nr, &nc, &v2)) continue;
+                int idx = *(dominoIndexMap + v1 * 7 + v2);
+                if (*(used + idx)) continue;
+
+                // розміщуємо кісточку
+                *(used + idx) = true;
+                *(placement + r * COLS + c) = idx;
+                *(placement + nr * COLS + nc) = idx;
+                *(field + r * COLS + c) = v1;
+                *(field + nr * COLS + nc) = v2;
+
+                if (canSatisfyHints(&r, &c) && canSatisfyHints(&nr, &nc)) {
+                    if (solve()) return true;
+                }
+
+                // відкатуємось
+                *(used + idx) = false;
+                *(placement + r * COLS + c) = -1;
+                *(placement + nr * COLS + nc) = -1;
+                *(field + r * COLS + c) = -1;
+                *(field + nr * COLS + nc) = -1;
+            }
+        }
+    }
+    return false;
 }
