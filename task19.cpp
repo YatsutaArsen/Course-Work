@@ -34,6 +34,8 @@ bool canSatisfyCol(int* c);
 bool canSatisfyHints(int* r, int* c);
 bool checkHints();
 bool solve();
+void printSolution();  // День 10: новий прототип
+void autoSolve();      // День 10: новий прототип
 
 int main() {
     initData();
@@ -44,6 +46,8 @@ int main() {
         int minV = 0, maxV = 3;
         *ptrChoice = safeReadInt(&minV, &maxV);
         switch (*ptrChoice) {
+            // День 10: підключаємо autoSolve до пункту меню 1
+            case 1: autoSolve();  break;
             case 3: printField(); break;
             case 0: {
                 string m = "  До побачення!";
@@ -364,14 +368,10 @@ bool checkHints() {
     return true;
 }
 
-// День 9: замінюємо просте сканування зліва направо на MRV
-// MRV — обираємо клітинку з найменшою кількістю можливих варіантів
-// це дозволяє раніше виявляти тупикові гілки і не витрачати час на них
 bool solve() {
     int bestR = -1, bestC = -1, minOpts = 999999;
     int emptyCount = 0;
 
-    // День 9: для кожної порожньої клітинки рахуємо кількість варіантів
     for (int r = 0; r < ROWS; r++) {
         for (int c = 0; c < COLS; c++) {
             if (!*(active + r * COLS + c)) continue;
@@ -398,10 +398,8 @@ bool solve() {
                 }
             }
 
-            // День 9: якщо варіантів немає — ця гілка тупикова, відразу повертаємо false
             if (opts == 0) return false;
 
-            // День 9: запам'ятовуємо клітинку з найменшою кількістю варіантів
             if (opts < minOpts) {
                 minOpts = opts;
                 bestR = r; bestC = c;
@@ -409,10 +407,8 @@ bool solve() {
         }
     }
 
-    // всі клітинки заповнені — перевіряємо підказки
     if (emptyCount == 0) return checkHints();
 
-    // День 9: працюємо з найбільш обмеженою клітинкою
     int r = bestR, c = bestC;
     int dr[] = {0, 1, 0, -1};
     int dc[] = {1, 0, -1, 0};
@@ -449,4 +445,46 @@ bool solve() {
         }
     }
     return false;
+}
+
+// День 10: виводить знайдений розв'язок — поле з кісточками і список використаних кісточок
+void printSolution() {
+    int w = 40;
+    printLine(&w);
+    string t = "  РОЗВ'ЯЗОК";
+    printMenuItem(&t, &w);
+    printLine(&w);
+    printFieldWithPlacement();
+    cout << "\n  Використані кісточки:\n";
+    printLine(&w);
+    for (int i = 0; i < *dominoCount; i++) {
+        if (!*(used + i)) continue;
+        string line = "  " + to_string((dominoes + i)->a) +
+                      "-" + to_string((dominoes + i)->b) + "  [+]";
+        printMenuItem(&line, &w);
+    }
+    printLine(&w);
+}
+
+// День 10: запускає пошук розв'язку і виводить результат
+void autoSolve() {
+    int maxV = 6;
+    generateDominoes(&maxV);
+
+    // скидаємо поле перед новим пошуком
+    for (int i = 0; i < ROWS; i++) {
+        for (int j = 0; j < COLS; j++) {
+            *(placement + i * COLS + j) = -1;
+            *(field + i * COLS + j) = -1;
+        }
+    }
+    for (int i = 0; i < *dominoCount; i++) *(used + i) = false;
+
+    cout << "\n  Шукаю розв'язок (MRV + Pruning)...\n";
+    if (solve()) {
+        cout << "  Розв'язок знайдено!\n";
+        printSolution();
+    } else {
+        cout << "\n  Розв'язку не знайдено.\n";
+    }
 }
