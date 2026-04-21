@@ -34,8 +34,9 @@ bool canSatisfyCol(int* c);
 bool canSatisfyHints(int* r, int* c);
 bool checkHints();
 bool solve();
-void printSolution();  // День 10: новий прототип
-void autoSolve();      // День 10: новий прототип
+void printSolution();
+void autoSolve();
+void userSolve();
 
 int main() {
     initData();
@@ -46,8 +47,8 @@ int main() {
         int minV = 0, maxV = 3;
         *ptrChoice = safeReadInt(&minV, &maxV);
         switch (*ptrChoice) {
-            // День 10: підключаємо autoSolve до пункту меню 1
             case 1: autoSolve();  break;
+            case 2: userSolve();  break;
             case 3: printField(); break;
             case 0: {
                 string m = "  До побачення!";
@@ -447,7 +448,6 @@ bool solve() {
     return false;
 }
 
-// День 10: виводить знайдений розв'язок — поле з кісточками і список використаних кісточок
 void printSolution() {
     int w = 40;
     printLine(&w);
@@ -466,12 +466,9 @@ void printSolution() {
     printLine(&w);
 }
 
-// День 10: запускає пошук розв'язку і виводить результат
 void autoSolve() {
     int maxV = 6;
     generateDominoes(&maxV);
-
-    // скидаємо поле перед новим пошуком
     for (int i = 0; i < ROWS; i++) {
         for (int j = 0; j < COLS; j++) {
             *(placement + i * COLS + j) = -1;
@@ -479,12 +476,109 @@ void autoSolve() {
         }
     }
     for (int i = 0; i < *dominoCount; i++) *(used + i) = false;
-
     cout << "\n  Шукаю розв'язок (MRV + Pruning)...\n";
     if (solve()) {
         cout << "  Розв'язок знайдено!\n";
         printSolution();
     } else {
         cout << "\n  Розв'язку не знайдено.\n";
+    }
+}
+
+void userSolve() {
+    int w = 40;
+    cout << "\n";
+    printLine(&w);
+    string t = "  РЕЖИМ ГРАВЦЯ";
+    printMenuItem(&t, &w);
+    printLine(&w);
+    cout << "\n  Вводьте координати двох клітинок та значення.\n";
+    cout << "  Введіть 0 щоб завершити.\n\n";
+
+    int maxV = 6;
+    generateDominoes(&maxV);
+
+    for (int i = 0; i < ROWS; i++) {
+        for (int j = 0; j < COLS; j++) {
+            *(placement + i * COLS + j) = -1;
+            *(field + i * COLS + j) = -1;
+        }
+    }
+
+    bool userUsed[28] = {};
+
+    while (true) {
+        printFieldWithPlacement();
+
+        cout << "\n  Рядок першої клітинки (0 = вихід): ";
+        int minR0 = 0, maxR = ROWS;
+        int r1 = safeReadInt(&minR0, &maxR);
+        if (r1 == 0) break;
+
+        cout << "  Колонка першої клітинки: ";
+        int minC1 = 1, maxC = COLS;
+        int c1 = safeReadInt(&minC1, &maxC);
+
+        cout << "  Рядок другої клітинки: ";
+        int minR1 = 1;
+        int r2 = safeReadInt(&minR1, &maxR);
+
+        cout << "  Колонка другої клітинки: ";
+        int c2 = safeReadInt(&minC1, &maxC);
+
+        r1--; c1--; r2--; c2--;
+
+        if (!*(active + r1 * COLS + c1) || !*(active + r2 * COLS + c2)) {
+            cout << "  Одна з клітинок неактивна!\n";
+            continue;
+        }
+
+        bool adjacent = (r1 == r2 && abs(c1 - c2) == 1) ||
+                        (c1 == c2 && abs(r1 - r2) == 1);
+        if (!adjacent) {
+            cout << "  Клітинки мають бути сусідніми!\n";
+            continue;
+        }
+
+        if (*(placement + r1 * COLS + c1) != -1 ||
+            *(placement + r2 * COLS + c2) != -1) {
+            cout << "  Одна з клітинок вже зайнята!\n";
+            continue;
+        }
+
+        cout << "  Значення першої половинки (0-6): ";
+        int minV = 0, maxVIn = 6;
+        int val1 = safeReadInt(&minV, &maxVIn);
+
+        cout << "  Значення другої половинки (0-6): ";
+        int val2 = safeReadInt(&minV, &maxVIn);
+
+        int idx = *(dominoIndexMap + val1 * 7 + val2);
+
+        if (*(userUsed + idx)) {
+            cout << "  Кісточка " << val1 << "-" << val2 << " вже використана!\n";
+            continue;
+        }
+
+        *(placement + r1 * COLS + c1) = idx;
+        *(placement + r2 * COLS + c2) = idx;
+        *(field + r1 * COLS + c1) = val1;
+        *(field + r2 * COLS + c2) = val2;
+        *(userUsed + idx) = true;
+        cout << "  Кісточку " << val1 << "-" << val2 << " розміщено!\n";
+
+        bool allPlaced = true;
+        for (int i = 0; i < ROWS; i++)
+            for (int j = 0; j < COLS; j++)
+                if (*(active + i * COLS + j) && *(placement + i * COLS + j) == -1)
+                    allPlaced = false;
+
+        if (allPlaced) {
+            if (checkHints())
+                cout << "\n  Вітаємо! Ви правильно розв'язали головоломку!\n";
+            else
+                cout << "\n  Всі клітинки заповнені, але підказки не збігаються.\n";
+            break;
+        }
     }
 }
