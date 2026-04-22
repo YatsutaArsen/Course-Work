@@ -3,21 +3,25 @@
 #include <vector>
 using namespace std;
 
+// День 1: розміри поля — 7 рядків x 6 колонок під літери B і G
 const int ROWS = 7;
 const int COLS = 6;
 
-bool* active;
-int* field;
-int* placement;
-vector<int>* rowHints;
-vector<int>* colHints;
+// День 1-4: глобальні масиви у динамічній пам'яті (вимога курсової)
+bool* active;       // активні клітинки поля
+int* field;         // значення цифр у клітинках
+int* placement;     // індекс кісточки що займає клітинку (-1 = порожньо)
+vector<int>* rowHints; // підказки для рядків
+vector<int>* colHints; // підказки для колонок
 
+// День 4: структура і масиви для кісточок доміно
 struct Domino { int a, b; };
-Domino* dominoes;
-int* dominoCount;
-int* dominoIndexMap;
-bool* used;
+Domino* dominoes;      // всі 28 кісточок (0-0 до 6-6)
+int* dominoCount;      // кількість згенерованих кісточок
+int* dominoIndexMap;   // кеш: [a*7+b] -> індекс кісточки
+bool* used;            // які кісточки вже використані
 
+// прототипи функцій
 void initData();
 void cleanupData();
 int utf8len(const string* s);
@@ -65,6 +69,7 @@ int main() {
     return 0;
 }
 
+// ініціалізація всіх масивів і підказок
 void initData() {
     active = new bool[ROWS * COLS];
     field = new int[ROWS * COLS];
@@ -74,6 +79,7 @@ void initData() {
     dominoIndexMap = new int[7 * 7];
     used = new bool[28];
 
+    // форма літер B і G на полі
     bool initActive[ROWS][COLS] = {
         {1,1,1, 1,1,1},
         {1,0,1, 1,0,0},
@@ -94,6 +100,7 @@ void initData() {
 
     for (int i = 0; i < 28; i++) *(used + i) = false;
 
+    // підказки — які цифри мають бути в рядку або колонці
     rowHints = new vector<int>[ROWS];
     colHints = new vector<int>[COLS];
 
@@ -109,6 +116,7 @@ void initData() {
     *(colHints + 5) = {1, 2, 3, 4};
 }
 
+// звільнення всієї динамічної пам'яті
 void cleanupData() {
     delete[] active;
     delete[] field;
@@ -121,6 +129,8 @@ void cleanupData() {
     delete[] colHints;
 }
 
+// рахує реальну кількість символів з урахуванням UTF-8
+// українські літери займають 2-3 байти тому text->length() давало неправильне значення
 int utf8len(const string* s) {
     int len = 0;
     for (int i = 0; i < (int)s->length(); ) {
@@ -133,12 +143,14 @@ int utf8len(const string* s) {
     return len;
 }
 
+// друкує горизонтальну лінію рамки
 void printLine(int* width) {
     cout << "+";
     for (int i = 0; i < *width; i++) cout << "-";
     cout << "+\n";
 }
 
+// друкує один рядок меню з вирівнюванням по правому краю
 void printMenuItem(string* text, int* width) {
     cout << "| " << *text;
     for (int i = utf8len(text); i < *width - 1; i++) cout << " ";
@@ -164,6 +176,7 @@ void printMenu() {
     cout << "  Ваш вибір: ";
 }
 
+// безпечне читання цілого числа з перевіркою діапазону
 int safeReadInt(int* minVal, int* maxVal) {
     int val;
     string line;
@@ -189,6 +202,7 @@ int safeReadInt(int* minVal, int* maxVal) {
     }
 }
 
+// виводить початкове поле з позначками # і підказками
 void printField() {
     int w = 40;
     cout << "\n";
@@ -230,6 +244,8 @@ void printField() {
     }
 }
 
+// генерує всі 28 кісточок від 0-0 до 6-6
+// і заповнює кеш dominoIndexMap в обидва боки (0-1 і 1-0 — одна кісточка)
 void generateDominoes(int* maxVal) {
     *dominoCount = 0;
     for (int i = 0; i <= *maxVal; i++) {
@@ -243,6 +259,8 @@ void generateDominoes(int* maxVal) {
     }
 }
 
+// виводить поле з розміщеними кісточками
+// між клітинками одної кісточки прибирається стінка
 void printFieldWithPlacement() {
     cout << "\n  +";
     for (int j = 0; j < COLS; j++) cout << "----+";
@@ -302,6 +320,8 @@ void printFieldWithPlacement() {
     }
 }
 
+// перевіряє чи дозволено розмістити значення val у клітинці (r, c)
+// val має бути серед підказок рядка і колонки якщо вони є
 bool isHintAllowed(int* r, int* c, int* val) {
     if (!(*(rowHints + *r)).empty()) {
         bool found = false;
@@ -320,6 +340,8 @@ bool isHintAllowed(int* r, int* c, int* val) {
     return true;
 }
 
+// перевіряє чи рядок r ще може бути виконаний
+// якщо порожніх клітинок менше ніж невиконаних підказок — неможливо
 bool canSatisfyRow(int* r) {
     if ((*(rowHints + *r)).empty()) return true;
     int unfulfilled = 0;
@@ -340,6 +362,7 @@ bool canSatisfyRow(int* r) {
     return emptyCells >= unfulfilled;
 }
 
+// те саме але для колонки c
 bool canSatisfyCol(int* c) {
     if ((*(colHints + *c)).empty()) return true;
     int unfulfilled = 0;
@@ -360,16 +383,21 @@ bool canSatisfyCol(int* c) {
     return emptyCells >= unfulfilled;
 }
 
+// об'єднана перевірка рядка і колонки — викликається після кожного розміщення
 bool canSatisfyHints(int* r, int* c) {
     return canSatisfyRow(r) && canSatisfyCol(c);
 }
 
+// фінальна перевірка — чи всі підказки виконані після заповнення поля
 bool checkHints() {
     for (int i = 0; i < ROWS; i++) if (!canSatisfyRow(&i)) return false;
     for (int j = 0; j < COLS; j++) if (!canSatisfyCol(&j)) return false;
     return true;
 }
 
+// рекурсивний розв'язувач з MRV (Minimum Remaining Values)
+// обирає клітинку з найменшою кількістю варіантів і пробує всі можливі кісточки
+// якщо зайшли в тупик — відкатуємось (backtracking)
 bool solve() {
     int bestR = -1, bestC = -1, minOpts = 999999;
     int emptyCount = 0;
@@ -400,6 +428,7 @@ bool solve() {
                 }
             }
 
+            // якщо варіантів немає — ця гілка тупикова
             if (opts == 0) return false;
 
             if (opts < minOpts) {
@@ -409,6 +438,7 @@ bool solve() {
         }
     }
 
+    // всі клітинки заповнені — перевіряємо підказки
     if (emptyCount == 0) return checkHints();
 
     int r = bestR, c = bestC;
@@ -428,6 +458,7 @@ bool solve() {
                 int idx = *(dominoIndexMap + v1 * 7 + v2);
                 if (*(used + idx)) continue;
 
+                // розміщуємо кісточку
                 *(used + idx) = true;
                 *(placement + r * COLS + c) = idx;
                 *(placement + nr * COLS + nc) = idx;
@@ -438,6 +469,7 @@ bool solve() {
                     if (solve()) return true;
                 }
 
+                // відкатуємось
                 *(used + idx) = false;
                 *(placement + r * COLS + c) = -1;
                 *(placement + nr * COLS + nc) = -1;
@@ -449,7 +481,7 @@ bool solve() {
     return false;
 }
 
-// День 14: виправлено — "Використані кісточки" тепер всередині рамки
+// виводить знайдений розв'язок — поле з кісточками і список використаних кісточок
 void printSolution() {
     int w = 40;
     printLine(&w);
@@ -468,6 +500,7 @@ void printSolution() {
     printLine(&w);
 }
 
+// скидає поле і запускає автоматичний пошук розв'язку
 void autoSolve() {
     int maxV = 6;
     generateDominoes(&maxV);
@@ -487,6 +520,7 @@ void autoSolve() {
     }
 }
 
+// режим гравця — вручну розміщує кісточки з перевірками
 void userSolve() {
     int w = 40;
     cout << "\n";
@@ -508,12 +542,10 @@ void userSolve() {
     }
 
     bool userUsed[28] = {};
-    int placedCount = 0; // День 14: лічильник розміщених кісточок
+    int placedCount = 0;
 
     while (true) {
         printFieldWithPlacement();
-
-        // День 14: виводимо скільки кісточок залишилось
         cout << "  Розміщено: " << placedCount << " з 16 кісточок\n";
 
         cout << "\n  Рядок першої клітинки (0 = вихід): ";
@@ -571,7 +603,7 @@ void userSolve() {
         *(field + r1 * COLS + c1) = val1;
         *(field + r2 * COLS + c2) = val2;
         *(userUsed + idx) = true;
-        placedCount++; // День 14: збільшуємо лічильник
+        placedCount++;
         cout << "  Кісточку " << val1 << "-" << val2 << " розміщено!\n";
 
         bool allPlaced = true;
