@@ -364,10 +364,6 @@ bool canSatisfyHints(int* r, int* c) {
     return canSatisfyRow(r) && canSatisfyCol(c);
 }
 
-// День 13: під час тестування помітили що checkHints викликав
-// canSatisfyHints з двома індексами замість окремих перевірок
-// через це колонки перевірялись некоректно — виправлено на
-// canSatisfyRow і canSatisfyCol окремо
 bool checkHints() {
     for (int i = 0; i < ROWS; i++) if (!canSatisfyRow(&i)) return false;
     for (int j = 0; j < COLS; j++) if (!canSatisfyCol(&j)) return false;
@@ -453,6 +449,7 @@ bool solve() {
     return false;
 }
 
+// День 14: виправлено — "Використані кісточки" тепер всередині рамки
 void printSolution() {
     int w = 40;
     printLine(&w);
@@ -511,9 +508,13 @@ void userSolve() {
     }
 
     bool userUsed[28] = {};
+    int placedCount = 0; // День 14: лічильник розміщених кісточок
 
     while (true) {
         printFieldWithPlacement();
+
+        // День 14: виводимо скільки кісточок залишилось
+        cout << "  Розміщено: " << placedCount << " з 16 кісточок\n";
 
         cout << "\n  Рядок першої клітинки (0 = вихід): ";
         int minR0 = 0, maxR = ROWS;
@@ -570,6 +571,7 @@ void userSolve() {
         *(field + r1 * COLS + c1) = val1;
         *(field + r2 * COLS + c2) = val2;
         *(userUsed + idx) = true;
+        placedCount++; // День 14: збільшуємо лічильник
         cout << "  Кісточку " << val1 << "-" << val2 << " розміщено!\n";
 
         bool allPlaced = true;
