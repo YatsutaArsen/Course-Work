@@ -177,7 +177,8 @@ int safeReadInt(int* minVal, int* maxVal) {
                 try {
                     val = stoi(line);
                     if (val >= *minVal && val <= *maxVal) return val;
-                    cout << "  Число від " << *minVal << " до " << *maxVal << ": ";
+                    cout << "  Число має бути від " << *minVal
+                         << " до " << *maxVal << ". Спробуйте ще: ";
                 } catch (...) {
                     cout << "  Помилка! Введіть ціле число: ";
                 }
@@ -363,6 +364,10 @@ bool canSatisfyHints(int* r, int* c) {
     return canSatisfyRow(r) && canSatisfyCol(c);
 }
 
+// День 13: під час тестування помітили що checkHints викликав
+// canSatisfyHints з двома індексами замість окремих перевірок
+// через це колонки перевірялись некоректно — виправлено на
+// canSatisfyRow і canSatisfyCol окремо
 bool checkHints() {
     for (int i = 0; i < ROWS; i++) if (!canSatisfyRow(&i)) return false;
     for (int j = 0; j < COLS; j++) if (!canSatisfyCol(&j)) return false;
