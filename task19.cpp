@@ -10,80 +10,80 @@ const int COLS = 6;
 
 struct Domino { int a, b; };
 
-bool* active;
-int* field;
-int* placement;
-Domino* dominoes;
-int* dominoCount;
-bool* used;
-vector<int>* rowHints;
-vector<int>* colHints;
-int* dominoIndexMap;
+// День 17: всі глобальні змінні згруповані в одну структуру
+struct GameData {
+    bool* active;
+    int* field;
+    int* placement;
+    Domino* dominoes;
+    int dominoCount;
+    bool* used;
+    vector<int>* rowHints;
+    vector<int>* colHints;
+    int* dominoIndexMap;
+};
 
-void initData();
-void cleanupData();
-void printLine(int* width);
-void printMenuItem(string* text, int* width);
+void initData(GameData* g);
+void cleanupData(GameData* g);
+void printLine(int width);
+void printMenuItem(string text, int width);
 void printMenu();
-int safeReadInt(int* minVal, int* maxVal);
-void printField(bool* showPlacement); // День 16: об'єднана функція
-void generateDominoes(int* maxVal);
-bool isHintAllowed(int* r, int* c, int* val);
-bool canSatisfyRow(int* r);
-bool canSatisfyCol(int* c);
-bool checkHints();
-bool solve();
-void resetField(); // День 16: новий прототип
-void autoSolve();
-void userSolve();
+int safeReadInt(int minVal, int maxVal);
+void printField(GameData* g, bool showPlacement);
+void generateDominoes(GameData* g, int maxVal);
+bool isHintAllowed(GameData* g, int r, int c, int val);
+bool canSatisfyRow(GameData* g, int r);
+bool canSatisfyCol(GameData* g, int c);
+bool checkHints(GameData* g);
+bool solve(GameData* g);
+void resetField(GameData* g);
+bool runTests(GameData* g);
+void autoSolve(GameData* g);
+void userSolve(GameData* g);
 
 int main() {
-    initData();
+    // День 17: екземпляр структури створюється всередині main()
+    GameData g;
+    initData(&g);
+
     int choice = 0;
-    int* ptrChoice = &choice;
     do {
         printMenu();
-        int minV = 0, maxV = 4; // День 16: розширили до 4 пунктів
-        *ptrChoice = safeReadInt(&minV, &maxV);
-        switch (*ptrChoice) {
-            case 1: autoSolve(); break;
-            case 2: userSolve(); break;
-            case 3: {
-                bool f = false;
-                printField(&f); // День 16: передаємо false — показати поле без кісточок
-                break;
-            }
+        choice = safeReadInt(0, 4);
+        switch (choice) {
+            case 1: autoSolve(&g); break;
+            case 2: userSolve(&g); break;
+            case 3: printField(&g, false); break;
             case 4: {
-                // TODO: день 17 — тут буде runDeveloperTests()
+                // TODO: день 18 — runDeveloperTests()
                 cout << "\n  [4] Ще в розробці...\n";
                 break;
             }
             case 0: {
                 cout << "\n";
-                int w = 55;
-                string m = "  До побачення!";
-                printLine(&w);
-                printMenuItem(&m, &w);
-                printLine(&w);
+                printLine(55);
+                printMenuItem("  До побачення!", 55);
+                printLine(55);
                 cout << "\n";
                 break;
             }
         }
-    } while (*ptrChoice != 0);
-    cleanupData();
+    } while (choice != 0);
+
+    cleanupData(&g);
     return 0;
 }
 
-void initData() {
-    active = new bool[ROWS * COLS];
-    field = new int[ROWS * COLS];
-    placement = new int[ROWS * COLS];
-    dominoes = new Domino[28];
-    dominoCount = new int(0);
-    used = new bool[28];
-    rowHints = new vector<int>[ROWS];
-    colHints = new vector<int>[COLS];
-    dominoIndexMap = new int[7 * 7];
+void initData(GameData* g) {
+    g->active = new bool[ROWS * COLS];
+    g->field = new int[ROWS * COLS];
+    g->placement = new int[ROWS * COLS];
+    g->dominoes = new Domino[28];
+    g->dominoCount = 0;
+    g->used = new bool[28];
+    g->rowHints = new vector<int>[ROWS];
+    g->colHints = new vector<int>[COLS];
+    g->dominoIndexMap = new int[7 * 7];
 
     bool initActive[ROWS][COLS] = {
         {1,1,1, 1,1,1},
@@ -95,77 +95,65 @@ void initData() {
         {1,1,1, 1,1,1}
     };
 
-    // День 16: спрощений цикл ініціалізації через одновимірний індекс
     for (int i = 0; i < ROWS * COLS; i++) {
-        *(active + i) = initActive[i / COLS][i % COLS];
-        *(field + i) = -1;
-        *(placement + i) = -1;
+        *(g->active + i) = initActive[i / COLS][i % COLS];
+        *(g->field + i) = -1;
+        *(g->placement + i) = -1;
     }
 
-    for (int i = 0; i < 28; i++) *(used + i) = false;
+    for (int i = 0; i < 28; i++) *(g->used + i) = false;
 
-    rowHints = new vector<int>[ROWS];
-    colHints = new vector<int>[COLS];
+    *(g->rowHints + 0) = {2, 0, 1, 5};
+    *(g->rowHints + 3) = {1, 3, 4};
+    *(g->rowHints + 6) = {0, 2, 3};
 
-    *(rowHints + 0) = {2, 0, 1, 5};
-    *(rowHints + 3) = {1, 3, 4};
-    *(rowHints + 6) = {0, 2, 3};
-
-    *(colHints + 0) = {2, 4, 6};
-    *(colHints + 1) = {0, 1, 5};
-    *(colHints + 2) = {0, 3, 6};
-    *(colHints + 3) = {1, 3, 6};
-    *(colHints + 4) = {0, 1, 5};
-    *(colHints + 5) = {1, 2, 3, 4};
+    *(g->colHints + 0) = {2, 4, 6};
+    *(g->colHints + 1) = {0, 1, 5};
+    *(g->colHints + 2) = {0, 3, 6};
+    *(g->colHints + 3) = {1, 3, 6};
+    *(g->colHints + 4) = {0, 1, 5};
+    *(g->colHints + 5) = {1, 2, 3, 4};
 }
 
-void cleanupData() {
-    delete[] active;
-    delete[] field;
-    delete[] placement;
-    delete[] dominoes;
-    delete dominoCount;
-    delete[] used;
-    delete[] rowHints;
-    delete[] colHints;
-    delete[] dominoIndexMap;
+void cleanupData(GameData* g) {
+    delete[] g->active;
+    delete[] g->field;
+    delete[] g->placement;
+    delete[] g->dominoes;
+    delete[] g->used;
+    delete[] g->rowHints;
+    delete[] g->colHints;
+    delete[] g->dominoIndexMap;
 }
 
-void printLine(int* width) {
+void printLine(int width) {
     cout << "+";
-    for (int i = 0; i < *width; i++) cout << "-";
+    for (int i = 0; i < width; i++) cout << "-";
     cout << "+\n";
 }
 
-void printMenuItem(string* text, int* width) {
-    cout << "| " << *text;
-    for (int i = (int)text->length(); i < *width - 1; i++) cout << " ";
+void printMenuItem(string text, int width) {
+    cout << "| " << text;
+    for (int i = (int)text.length(); i < width - 1; i++) cout << " ";
     cout << "|\n";
 }
 
-// День 16: розширили меню до w=55, додали пункт [4]
 void printMenu() {
     int w = 55;
     cout << "\n";
-    printLine(&w);
-    string t1 = "             ГОЛОВОЛОМКА ДОМІНО";
-    printMenuItem(&t1, &w);
-    printLine(&w);
-    string t2 = "  [1] Розв'язати автоматично (Турбо)";
-    string t3 = "  [2] Спробувати самому";
-    string t4 = "  [3] Показати поле";
-    string t5 = "  [4] Інженерне тестування (в розробці)";
-    string t6 = "  [0] Вийти";
-    printMenuItem(&t2, &w);
-    printMenuItem(&t3, &w);
-    printMenuItem(&t4, &w);
-    printMenuItem(&t5, &w);
-    printMenuItem(&t6, &w);
-    printLine(&w);
+    printLine(w);
+    printMenuItem("             ГОЛОВОЛОМКА ДОМІНО", w);
+    printLine(w);
+    printMenuItem("  [1] Розв'язати автоматично (Турбо)", w);
+    printMenuItem("  [2] Спробувати самому", w);
+    printMenuItem("  [3] Показати поле", w);
+    printMenuItem("  [4] Інженерне тестування (в розробці)", w);
+    printMenuItem("  [0] Вийти", w);
+    printLine(w);
     cout << "  Ваш вибір: ";
 }
 
-int safeReadInt(int* minVal, int* maxVal) {
+int safeReadInt(int minVal, int maxVal) {
     string line;
     while (getline(cin, line)) {
         bool valid = !line.empty();
@@ -176,128 +164,121 @@ int safeReadInt(int* minVal, int* maxVal) {
         if (valid) {
             try {
                 int val = stoi(line);
-                if (val >= *minVal && val <= *maxVal) return val;
-                cout << "  Число має бути від " << *minVal << " до "
-                     << *maxVal << ". Спробуйте ще: ";
+                if (val >= minVal && val <= maxVal) return val;
+                cout << "  Число має бути від " << minVal << " до "
+                     << maxVal << ". Спробуйте ще: ";
                 continue;
             } catch (...) {}
         }
         cout << "  Помилка! Введіть ціле число: ";
     }
-    return *minVal;
+    return minVal;
 }
 
-// День 16: об'єднали printField і printFieldWithPlacement в одну функцію
-// sp = false — показує поле з # (режим перегляду)
-// sp = true  — показує поле з цифрами і кісточками (режим розв'язку)
-void printField(bool* sp) {
+void printField(GameData* g, bool sp) {
     cout << "\n  +";
-    for (int j = 0; j < COLS; j++) cout << (*sp ? "----+" : "---+");
+    for (int j = 0; j < COLS; j++) cout << (sp ? "----+" : "---+");
     cout << "\n";
 
     for (int i = 0; i < ROWS; i++) {
         cout << "  |";
         for (int j = 0; j < COLS; j++) {
-            if (!*(active + i * COLS + j)) {
-                cout << (*sp ? "    |" : "   |");
+            if (!*(g->active + i * COLS + j)) {
+                cout << (sp ? "    |" : "   |");
                 continue;
             }
-            if (!*sp) {
-                // режим перегляду — просто #
-                cout << " # |";
-                continue;
-            }
-            // режим розв'язку — визначаємо правий кордон
+            if (!sp) { cout << " # |"; continue; }
+
             string rightBorder = "|";
             if (j + 1 < COLS &&
-                *(active + i * COLS + (j + 1)) &&
-                *(placement + i * COLS + j) != -1 &&
-                *(placement + i * COLS + j) == *(placement + i * COLS + (j + 1))) {
+                *(g->active + i * COLS + (j + 1)) &&
+                *(g->placement + i * COLS + j) != -1 &&
+                *(g->placement + i * COLS + j) == *(g->placement + i * COLS + (j + 1))) {
                 rightBorder = " ";
             }
-            if (*(field + i * COLS + j) >= 0)
-                cout << " " << *(field + i * COLS + j) << " " << rightBorder;
+            if (*(g->field + i * COLS + j) >= 0)
+                cout << " " << *(g->field + i * COLS + j) << " " << rightBorder;
             else
                 cout << " . " << rightBorder;
         }
 
-        if (!(*(rowHints + i)).empty()) {
+        if (!(*(g->rowHints + i)).empty()) {
             cout << "  <";
-            for (int h : *(rowHints + i)) cout << " " << h;
+            for (int h : *(g->rowHints + i)) cout << " " << h;
         }
 
         cout << "\n  +";
         for (int j = 0; j < COLS; j++) {
-            if (*sp && i + 1 < ROWS &&
-                *(active + i * COLS + j) &&
-                *(active + (i + 1) * COLS + j) &&
-                *(placement + i * COLS + j) != -1 &&
-                *(placement + i * COLS + j) == *(placement + (i + 1) * COLS + j)) {
+            if (sp && i + 1 < ROWS &&
+                *(g->active + i * COLS + j) &&
+                *(g->active + (i + 1) * COLS + j) &&
+                *(g->placement + i * COLS + j) != -1 &&
+                *(g->placement + i * COLS + j) == *(g->placement + (i + 1) * COLS + j)) {
                 cout << "    +";
             } else {
-                cout << (*sp ? "----+" : "---+");
+                cout << (sp ? "----+" : "---+");
             }
         }
         cout << "\n";
     }
 
     cout << "    ";
-    for (int j = 0; j < COLS; j++) cout << (*sp ? "  ^  " : "  ^ ");
+    for (int j = 0; j < COLS; j++) cout << (sp ? "  ^  " : "  ^ ");
     cout << "\n";
     for (int line = 0; line < 4; line++) {
         cout << "    ";
         for (int j = 0; j < COLS; j++) {
-            if (line < (int)(*(colHints + j)).size())
-                cout << "  " << (*(colHints + j))[line] << (*sp ? "  " : " ");
+            if (line < (int)(*(g->colHints + j)).size())
+                cout << "  " << (*(g->colHints + j))[line] << (sp ? "  " : " ");
             else
-                cout << (*sp ? "     " : "    ");
+                cout << (sp ? "     " : "    ");
         }
         cout << "\n";
     }
 }
 
-void generateDominoes(int* maxVal) {
-    *dominoCount = 0;
-    for (int i = 0; i <= *maxVal; i++) {
-        for (int j = i; j <= *maxVal; j++) {
-            (dominoes + *dominoCount)->a = i;
-            (dominoes + *dominoCount)->b = j;
-            *(dominoIndexMap + i * 7 + j) = *dominoCount;
-            *(dominoIndexMap + j * 7 + i) = *dominoCount;
-            (*dominoCount)++;
+void generateDominoes(GameData* g, int maxVal) {
+    g->dominoCount = 0;
+    for (int i = 0; i <= maxVal; i++) {
+        for (int j = i; j <= maxVal; j++) {
+            (g->dominoes + g->dominoCount)->a = i;
+            (g->dominoes + g->dominoCount)->b = j;
+            *(g->dominoIndexMap + i * 7 + j) = g->dominoCount;
+            *(g->dominoIndexMap + j * 7 + i) = g->dominoCount;
+            g->dominoCount++;
         }
     }
 }
 
-bool isHintAllowed(int* r, int* c, int* val) {
-    if (!(*(rowHints + *r)).empty()) {
+bool isHintAllowed(GameData* g, int r, int c, int val) {
+    if (!(*(g->rowHints + r)).empty()) {
         bool found = false;
-        for (int h : *(rowHints + *r)) {
-            if (h == *val) { found = true; break; }
+        for (int h : *(g->rowHints + r)) {
+            if (h == val) { found = true; break; }
         }
         if (!found) return false;
     }
-    if (!(*(colHints + *c)).empty()) {
+    if (!(*(g->colHints + c)).empty()) {
         bool found = false;
-        for (int h : *(colHints + *c)) {
-            if (h == *val) { found = true; break; }
+        for (int h : *(g->colHints + c)) {
+            if (h == val) { found = true; break; }
         }
         if (!found) return false;
     }
     return true;
 }
 
-bool canSatisfyRow(int* r) {
-    if ((*(rowHints + *r)).empty()) return true;
+bool canSatisfyRow(GameData* g, int r) {
+    if ((*(g->rowHints + r)).empty()) return true;
     int unfulfilled = 0, emptyCells = 0;
     for (int j = 0; j < COLS; j++) {
-        if (*(active + *r * COLS + j) && *(placement + *r * COLS + j) == -1)
+        if (*(g->active + r * COLS + j) && *(g->placement + r * COLS + j) == -1)
             emptyCells++;
     }
-    for (int h : *(rowHints + *r)) {
+    for (int h : *(g->rowHints + r)) {
         bool found = false;
         for (int j = 0; j < COLS; j++) {
-            if (*(active + *r * COLS + j) && *(field + *r * COLS + j) == h) {
+            if (*(g->active + r * COLS + j) && *(g->field + r * COLS + j) == h) {
                 found = true; break;
             }
         }
@@ -306,17 +287,17 @@ bool canSatisfyRow(int* r) {
     return emptyCells >= unfulfilled;
 }
 
-bool canSatisfyCol(int* c) {
-    if ((*(colHints + *c)).empty()) return true;
+bool canSatisfyCol(GameData* g, int c) {
+    if ((*(g->colHints + c)).empty()) return true;
     int unfulfilled = 0, emptyCells = 0;
     for (int i = 0; i < ROWS; i++) {
-        if (*(active + i * COLS + *c) && *(placement + i * COLS + *c) == -1)
+        if (*(g->active + i * COLS + c) && *(g->placement + i * COLS + c) == -1)
             emptyCells++;
     }
-    for (int h : *(colHints + *c)) {
+    for (int h : *(g->colHints + c)) {
         bool found = false;
         for (int i = 0; i < ROWS; i++) {
-            if (*(active + i * COLS + *c) && *(field + i * COLS + *c) == h) {
+            if (*(g->active + i * COLS + c) && *(g->field + i * COLS + c) == h) {
                 found = true; break;
             }
         }
@@ -325,32 +306,32 @@ bool canSatisfyCol(int* c) {
     return emptyCells >= unfulfilled;
 }
 
-bool checkHints() {
-    for (int i = 0; i < ROWS; i++) if (!canSatisfyRow(&i)) return false;
-    for (int j = 0; j < COLS; j++) if (!canSatisfyCol(&j)) return false;
+bool checkHints(GameData* g) {
+    for (int i = 0; i < ROWS; i++) if (!canSatisfyRow(g, i)) return false;
+    for (int j = 0; j < COLS; j++) if (!canSatisfyCol(g, j)) return false;
     return true;
 }
 
-bool solve() {
+bool solve(GameData* g) {
     int bestR = -1, bestC = -1, minOpts = 999999, emptyCount = 0;
     int dr[] = {0, 1, 0, -1};
     int dc[] = {1, 0, -1, 0};
 
     for (int r = 0; r < ROWS; r++) {
         for (int c = 0; c < COLS; c++) {
-            if (*(active + r * COLS + c) && *(placement + r * COLS + c) == -1) {
+            if (*(g->active + r * COLS + c) && *(g->placement + r * COLS + c) == -1) {
                 emptyCount++;
                 int opts = 0;
                 for (int i = 0; i < 4; i++) {
-                    int nr = r + *(dr + i), nc = c + *(dc + i);
+                    int nr = r + dr[i], nc = c + dc[i];
                     if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS &&
-                        *(active + nr * COLS + nc) &&
-                        *(placement + nr * COLS + nc) == -1) {
+                        *(g->active + nr * COLS + nc) &&
+                        *(g->placement + nr * COLS + nc) == -1) {
                         for (int v1 = 0; v1 <= 6; v1++) {
-                            if (!isHintAllowed(&r, &c, &v1)) continue;
+                            if (!isHintAllowed(g, r, c, v1)) continue;
                             for (int v2 = 0; v2 <= 6; v2++) {
-                                if (!isHintAllowed(&nr, &nc, &v2)) continue;
-                                if (!*(used + *(dominoIndexMap + v1 * 7 + v2))) opts++;
+                                if (!isHintAllowed(g, nr, nc, v2)) continue;
+                                if (!*(g->used + *(g->dominoIndexMap + v1 * 7 + v2))) opts++;
                             }
                         }
                     }
@@ -363,36 +344,36 @@ bool solve() {
         }
     }
 
-    if (emptyCount == 0) return checkHints();
+    if (emptyCount == 0) return checkHints(g);
 
     int r = bestR, c = bestC;
     for (int i = 0; i < 4; i++) {
-        int nr = r + *(dr + i), nc = c + *(dc + i);
+        int nr = r + dr[i], nc = c + dc[i];
         if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS &&
-            *(active + nr * COLS + nc) &&
-            *(placement + nr * COLS + nc) == -1) {
+            *(g->active + nr * COLS + nc) &&
+            *(g->placement + nr * COLS + nc) == -1) {
             for (int v1 = 0; v1 <= 6; v1++) {
-                if (!isHintAllowed(&r, &c, &v1)) continue;
+                if (!isHintAllowed(g, r, c, v1)) continue;
                 for (int v2 = 0; v2 <= 6; v2++) {
-                    if (!isHintAllowed(&nr, &nc, &v2)) continue;
-                    int idx = *(dominoIndexMap + v1 * 7 + v2);
-                    if (!*(used + idx)) {
-                        *(used + idx) = true;
-                        *(placement + r * COLS + c) = idx;
-                        *(placement + nr * COLS + nc) = idx;
-                        *(field + r * COLS + c) = v1;
-                        *(field + nr * COLS + nc) = v2;
+                    if (!isHintAllowed(g, nr, nc, v2)) continue;
+                    int idx = *(g->dominoIndexMap + v1 * 7 + v2);
+                    if (!*(g->used + idx)) {
+                        *(g->used + idx) = true;
+                        *(g->placement + r * COLS + c) = idx;
+                        *(g->placement + nr * COLS + nc) = idx;
+                        *(g->field + r * COLS + c) = v1;
+                        *(g->field + nr * COLS + nc) = v2;
 
-                        if (canSatisfyRow(&r) && canSatisfyCol(&c) &&
-                            canSatisfyRow(&nr) && canSatisfyCol(&nc)) {
-                            if (solve()) return true;
+                        if (canSatisfyRow(g, r) && canSatisfyCol(g, c) &&
+                            canSatisfyRow(g, nr) && canSatisfyCol(g, nc)) {
+                            if (solve(g)) return true;
                         }
 
-                        *(used + idx) = false;
-                        *(placement + r * COLS + c) = -1;
-                        *(placement + nr * COLS + nc) = -1;
-                        *(field + r * COLS + c) = -1;
-                        *(field + nr * COLS + nc) = -1;
+                        *(g->used + idx) = false;
+                        *(g->placement + r * COLS + c) = -1;
+                        *(g->placement + nr * COLS + nc) = -1;
+                        *(g->field + r * COLS + c) = -1;
+                        *(g->field + nr * COLS + nc) = -1;
                     }
                 }
             }
@@ -401,83 +382,161 @@ bool solve() {
     return false;
 }
 
-// День 16: окрема функція скидання поля
-// раніше цей код дублювався в autoSolve і userSolve
-void resetField() {
+void resetField(GameData* g) {
     for (int i = 0; i < ROWS * COLS; i++) {
-        *(placement + i) = -1;
-        *(field + i) = -1;
+        *(g->placement + i) = -1;
+        *(g->field + i) = -1;
     }
-    for (int i = 0; i < 28; i++) *(used + i) = false;
+    for (int i = 0; i < 28; i++) *(g->used + i) = false;
 }
 
-void autoSolve() {
-    int maxV = 6;
-    generateDominoes(&maxV);
-    resetField(); // День 16: використовуємо resetField замість дублювання коду
+bool runTests(GameData* g) {
+    int w = 55;
+    cout << "\n";
+    printLine(w);
+    printMenuItem("  СИСТЕМА ВЕРИФІКАЦІЇ РОЗВ'ЯЗКУ (UNIT TESTS)", w);
+    printLine(w);
+
+    bool fullCoverage = true;
+    for (int i = 0; i < ROWS * COLS; i++) {
+        if (*(g->active + i) && *(g->placement + i) == -1) fullCoverage = false;
+    }
+    cout << "  [+] Перевірка заповненості поля............ "
+         << (fullCoverage ? "OK" : "FAIL") << "\n";
+    if (!fullCoverage) return false;
+
+    bool uniqueValid = true, adjValid = true, valuesValid = true;
+    int counts[28] = {0};
+    for (int i = 0; i < ROWS * COLS; i++) {
+        if (*(g->active + i)) counts[*(g->placement + i)]++;
+    }
+
+    for (int i = 0; i < 28; i++) {
+        if (counts[i] != 0 && counts[i] != 2) uniqueValid = false;
+        if (counts[i] == 2) {
+            int r1 = -1, c1 = -1, r2 = -1, c2 = -1;
+            for (int pos = 0; pos < ROWS * COLS; pos++) {
+                if (*(g->active + pos) && *(g->placement + pos) == i) {
+                    if (r1 == -1) { r1 = pos / COLS; c1 = pos % COLS; }
+                    else { r2 = pos / COLS; c2 = pos % COLS; }
+                }
+            }
+            bool adj = (r1 == r2 && abs(c1 - c2) == 1) ||
+                       (c1 == c2 && abs(r1 - r2) == 1);
+            if (!adj) adjValid = false;
+
+            int v1 = *(g->field + r1 * COLS + c1);
+            int v2 = *(g->field + r2 * COLS + c2);
+            int da = (g->dominoes + i)->a;
+            int db = (g->dominoes + i)->b;
+            if (!((v1 == da && v2 == db) || (v1 == db && v2 == da)))
+                valuesValid = false;
+        }
+    }
+    cout << "  [+] Перевірка унікальності доміно.......... "
+         << ((uniqueValid && valuesValid) ? "OK" : "FAIL") << "\n";
+    cout << "  [+] Перевірка правил сусідства (геометрія). "
+         << (adjValid ? "OK" : "FAIL") << "\n";
+
+    bool rowsOk = true;
+    for (int r = 0; r < ROWS; r++) {
+        for (int h : *(g->rowHints + r)) {
+            bool found = false;
+            for (int c = 0; c < COLS; c++) {
+                if (*(g->active + r * COLS + c) && *(g->field + r * COLS + c) == h)
+                    found = true;
+            }
+            if (!found) rowsOk = false;
+        }
+    }
+    cout << "  [+] Відповідність числовим підказкам (ряд). "
+         << (rowsOk ? "OK" : "FAIL") << "\n";
+
+    bool colsOk = true;
+    for (int c = 0; c < COLS; c++) {
+        for (int h : *(g->colHints + c)) {
+            bool found = false;
+            for (int r = 0; r < ROWS; r++) {
+                if (*(g->active + r * COLS + c) && *(g->field + r * COLS + c) == h)
+                    found = true;
+            }
+            if (!found) colsOk = false;
+        }
+    }
+    cout << "  [+] Відповідність числовим підказкам (кол). "
+         << (colsOk ? "OK" : "FAIL") << "\n";
+
+    printLine(w);
+    if (fullCoverage && uniqueValid && adjValid && valuesValid && rowsOk && colsOk) {
+        printMenuItem("  ВЕРДИКТ: РОЗВ'ЯЗОК АБСОЛЮТНО ПРАВИЛЬНИЙ (100%)", w);
+        printLine(w);
+        return true;
+    } else {
+        printMenuItem("  ВЕРДИКТ: ЗНАЙДЕНО КРИТИЧНІ ПОМИЛКИ!", w);
+        printLine(w);
+        return false;
+    }
+}
+
+void autoSolve(GameData* g) {
+    generateDominoes(g, 6);
+    resetField(g);
 
     cout << "\n  Шукаю розв'язок (MRV + Pruning)...\n";
-    if (solve()) {
+    if (solve(g)) {
         cout << "  Розв'язок знайдено!\n";
-        bool t = true;
         int w = 55;
-        printLine(&w);
-        string msg = "  РОЗВ'ЯЗОК";
-        printMenuItem(&msg, &w);
-        printLine(&w);
-        printField(&t);
+        printLine(w);
+        printMenuItem("  РОЗВ'ЯЗОК", w);
+        printLine(w);
+        printField(g, true);
         cout << "\n  Використані кісточки:\n";
-        printLine(&w);
-        for (int i = 0; i < *dominoCount; i++) {
-            if (*(used + i)) {
-                string line = "  " + to_string((dominoes + i)->a) +
-                              "-" + to_string((dominoes + i)->b) + "  [+]";
-                printMenuItem(&line, &w);
+        printLine(w);
+        for (int i = 0; i < g->dominoCount; i++) {
+            if (*(g->used + i)) {
+                string line = "  " + to_string((g->dominoes + i)->a) +
+                              "-" + to_string((g->dominoes + i)->b) + "  [+]";
+                printMenuItem(line, w);
             }
         }
-        printLine(&w);
+        printLine(w);
+        runTests(g);
     } else {
         cout << "\n  Розв'язку не знайдено.\n";
     }
 }
 
-void userSolve() {
+void userSolve(GameData* g) {
     cout << "\n";
     int w = 55;
-    printLine(&w);
-    string t = "  РЕЖИМ ГРАВЦЯ";
-    printMenuItem(&t, &w);
-    printLine(&w);
+    printLine(w);
+    printMenuItem("  РЕЖИМ ГРАВЦЯ", w);
+    printLine(w);
     cout << "\n  Вводьте координати двох клітинок та значення.\n";
     cout << "  Введіть 0 щоб завершити.\n\n";
 
-    int maxV = 6;
-    generateDominoes(&maxV);
-    resetField(); // День 16: використовуємо resetField
+    generateDominoes(g, 6);
+    resetField(g);
     bool userUsed[28] = {};
 
     while (true) {
-        bool t_val = true;
-        printField(&t_val);
+        printField(g, true);
 
         cout << "\n  Рядок першої клітинки (0 = вихід): ";
-        int minR0 = 0, maxR = ROWS;
-        int r1 = safeReadInt(&minR0, &maxR);
+        int r1 = safeReadInt(0, ROWS);
         if (r1 == 0) break;
 
         cout << "  Колонка першої клітинки: ";
-        int minC1 = 1, maxC = COLS;
-        int c1 = safeReadInt(&minC1, &maxC);
+        int c1 = safeReadInt(1, COLS);
 
         cout << "  Рядок другої клітинки: ";
-        int minR1 = 1;
-        int r2 = safeReadInt(&minR1, &maxR);
+        int r2 = safeReadInt(1, ROWS);
 
         cout << "  Колонка другої клітинки: ";
-        int c2 = safeReadInt(&minC1, &maxC);
+        int c2 = safeReadInt(1, COLS);
         r1--; c1--; r2--; c2--;
 
-        if (!*(active + r1 * COLS + c1) || !*(active + r2 * COLS + c2)) {
+        if (!*(g->active + r1 * COLS + c1) || !*(g->active + r2 * COLS + c2)) {
             cout << "  Одна з клітинок неактивна!\n";
             continue;
         }
@@ -487,43 +546,42 @@ void userSolve() {
             cout << "  Клітинки мають бути сусідніми!\n";
             continue;
         }
-        if (*(placement + r1 * COLS + c1) != -1 ||
-            *(placement + r2 * COLS + c2) != -1) {
+        if (*(g->placement + r1 * COLS + c1) != -1 ||
+            *(g->placement + r2 * COLS + c2) != -1) {
             cout << "  Одна з клітинок вже зайнята!\n";
             continue;
         }
 
         cout << "  Значення першої половинки (0-6): ";
-        int minV = 0, maxVIn = 6;
-        int val1 = safeReadInt(&minV, &maxVIn);
+        int val1 = safeReadInt(0, 6);
         cout << "  Значення другої половинки (0-6): ";
-        int val2 = safeReadInt(&minV, &maxVIn);
+        int val2 = safeReadInt(0, 6);
 
-        int idx = *(dominoIndexMap + val1 * 7 + val2);
+        int idx = *(g->dominoIndexMap + val1 * 7 + val2);
         if (*(userUsed + idx)) {
             cout << "  Кісточка " << val1 << "-" << val2 << " вже використана!\n";
             continue;
         }
 
-        *(placement + r1 * COLS + c1) = idx;
-        *(placement + r2 * COLS + c2) = idx;
-        *(field + r1 * COLS + c1) = val1;
-        *(field + r2 * COLS + c2) = val2;
+        *(g->placement + r1 * COLS + c1) = idx;
+        *(g->placement + r2 * COLS + c2) = idx;
+        *(g->field + r1 * COLS + c1) = val1;
+        *(g->field + r2 * COLS + c2) = val2;
         *(userUsed + idx) = true;
         cout << "  Кісточку " << val1 << "-" << val2 << " розміщено!\n";
 
         bool allPlaced = true;
         for (int i = 0; i < ROWS * COLS; i++) {
-            if (*(active + i) && *(placement + i) == -1) {
+            if (*(g->active + i) && *(g->placement + i) == -1) {
                 allPlaced = false; break;
             }
         }
 
         if (allPlaced) {
-            if (checkHints())
-                cout << "\n  Вітаємо! Ви правильно розв'язали головоломку!\n";
+            if (runTests(g))
+                cout << "\n  Вітаємо! Ви самостійно розв'язали головоломку!\n";
             else
-                cout << "\n  Всі клітинки заповнені, але підказки не збігаються.\n";
+                cout << "\n  На жаль, у вашому розв'язку є помилки.\n";
             break;
         }
     }
