@@ -3,7 +3,6 @@
 #include <vector>
 #include <cmath>
 #include <cstdlib>
-#include <chrono>
 #include <algorithm>
 #include <ctime>
 using namespace std;
@@ -44,6 +43,8 @@ bool runTests(GameData* g);
 void runDeveloperTests(GameData* g);
 void autoSolve(GameData* g);
 void userSolve(GameData* g);
+bool fillBoardRandomly(GameData* g);
+void generateTask(GameData* g);
 
 int main() {
     srand(time(0));
@@ -53,12 +54,13 @@ int main() {
     int choice = 0;
     do {
         printMenu();
-        choice = safeReadInt(0, 4);
+        choice = safeReadInt(0, 5);
         switch (choice) {
             case 1: autoSolve(&g); break;
             case 2: userSolve(&g); break;
             case 3: printField(&g, false); break;
             case 4: runDeveloperTests(&g); break;
+            case 5: generateTask(&g); break;
             case 0: {
                 cout << "\n";
                 printLine(55);
@@ -160,6 +162,7 @@ void printMenu() {
     printMenuItem("  [2] Спробувати самому", w);
     printMenuItem("  [3] Показати поле", w);
     printMenuItem("  [4] Запустити інженерні тести", w);
+    printMenuItem("  [5] Згенерувати нове завдання", w);
     printMenuItem("  [0] Вийти", w);
     printLine(w);
     cout << "  Ваш вибір: ";
@@ -406,18 +409,18 @@ bool runTests(GameData* g) {
     int w = 55;
     cout << "\n";
     printLine(w);
-    printMenuItem("  перевірка розв'язку", w);
+    printMenuItem("  Перевірка розв'язку", w);
     printLine(w);
 
     bool fullCoverage = true;
     for (int i = 0; i < ROWS * COLS; i++) {
         if (*(g->active + i) && *(g->placement + i) == -1) fullCoverage = false;
     }
-    cout << "  заповненість поля.................. "
+    cout << "  Заповненість поля.................. "
          << (fullCoverage ? "ok" : "не пройдено") << "\n";
     if (!fullCoverage) {
         printLine(w);
-        printMenuItem("  поле не заповнене повністю", w);
+        printMenuItem("  Поле не заповнене повністю", w);
         printLine(w);
         return false;
     }
@@ -450,9 +453,9 @@ bool runTests(GameData* g) {
                 valuesValid = false;
         }
     }
-    cout << "  унікальність кісточок.............. "
+    cout << "  Унікальність кісточок.............. "
          << ((uniqueValid && valuesValid) ? "ok" : "не пройдено") << "\n";
-    cout << "  сусідство клітинок................. "
+    cout << "  Сусідство клітинок................. "
          << (adjValid ? "ok" : "не пройдено") << "\n";
 
     bool rowsOk = true;
@@ -466,7 +469,7 @@ bool runTests(GameData* g) {
             if (!found) rowsOk = false;
         }
     }
-    cout << "  підказки рядків.................... "
+    cout << "  Підказки рядків.................... "
          << (rowsOk ? "ok" : "не пройдено") << "\n";
 
     bool colsOk = true;
@@ -480,16 +483,16 @@ bool runTests(GameData* g) {
             if (!found) colsOk = false;
         }
     }
-    cout << "  підказки колонок................... "
+    cout << "  Підказки колонок................... "
          << (colsOk ? "ok" : "не пройдено") << "\n";
 
     printLine(w);
     if (fullCoverage && uniqueValid && adjValid && valuesValid && rowsOk && colsOk) {
-        printMenuItem("  розв'язок правильний", w);
+        printMenuItem("  Розв'язок правильний", w);
         printLine(w);
         return true;
     } else {
-        printMenuItem("  у розв'язку є помилки", w);
+        printMenuItem("  У розв'язку є помилки", w);
         printLine(w);
         return false;
     }
@@ -499,72 +502,172 @@ void runDeveloperTests(GameData* g) {
     int w = 55;
     cout << "\n";
     printLine(w);
-    printMenuItem("  інженерне тестування", w);
+    printMenuItem("  Інженерне тестування", w);
     printLine(w);
 
     generateDominoes(g, 6);
 
-    cout << "\n  тест 1: порожнє поле\n";
+    cout << "\n  Тест 1: порожнє поле\n";
     resetField(g);
     printField(g, true);
     bool t1 = runTests(g);
-    if (!t1) cout << "  система правильно відхилила порожнє поле\n";
-    else cout << "  помилка: система прийняла порожнє поле\n";
+    if (!t1) cout << "  Система правильно відхилила порожнє поле\n";
+    else cout << "  Помилка: система прийняла порожнє поле\n";
 
-    cout << "\n  тест 2: правильний розв'язок\n";
+    cout << "\n  Тест 2: правильний розв'язок\n";
     resetField(g);
     solve(g);
     printField(g, true);
     bool t2 = runTests(g);
-    if (t2) cout << "  система правильно прийняла коректний розв'язок\n";
-    else cout << "  помилка: система відхилила правильний розв'язок\n";
+    if (t2) cout << "  Система правильно прийняла коректний розв'язок\n";
+    else cout << "  Помилка: система відхилила правильний розв'язок\n";
 
-    cout << "\n  тест 3: одне число замінено на 9\n";
+    cout << "\n  Тест 3: одне число замінено на 9\n";
     int originalVal = *(g->field + 0);
     *(g->field + 0) = 9;
     printField(g, true);
     bool t3 = runTests(g);
-    if (!t3) cout << "  система побачила невірне число\n";
-    else cout << "  помилка: система пропустила невірне число\n";
+    if (!t3) cout << "  Система побачила невірне число\n";
+    else cout << "  Помилка: система пропустила невірне число\n";
     *(g->field + 0) = originalVal;
 
-    cout << "\n  тест 4: одна кісточка розірвана на два кути поля\n";
+    cout << "\n  Тест 4: одна кісточка розірвана на два кути поля\n";
     int orig1 = *(g->placement + 0);
     int orig2 = *(g->placement + (ROWS * COLS - 1));
     *(g->placement + 0) = 5;
     *(g->placement + (ROWS * COLS - 1)) = 5;
     printField(g, true);
     bool t4 = runTests(g);
-    if (!t4) cout << "  система побачила розірване доміно\n";
-    else cout << "  помилка: система не помітила розірване доміно\n";
+    if (!t4) cout << "  Система побачила розірване доміно\n";
+    else cout << "  Помилка: система не помітила розірване доміно\n";
     *(g->placement + 0) = orig1;
     *(g->placement + (ROWS * COLS - 1)) = orig2;
 
     cout << "\n";
     printLine(w);
-    printMenuItem("  усі модулі захисту працюють коректно", w);
+    printMenuItem("  Усі модулі захисту працюють коректно", w);
     printLine(w);
+}
+
+bool fillBoardRandomly(GameData* g) {
+    int bestR = -1, bestC = -1;
+    for (int r = 0; r < ROWS; r++) {
+        for (int c = 0; c < COLS; c++) {
+            if (*(g->active + r * COLS + c) && *(g->placement + r * COLS + c) == -1) {
+                bestR = r; bestC = c; break;
+            }
+        }
+        if (bestR != -1) break;
+    }
+    if (bestR == -1) return true;
+
+    int r = bestR, c = bestC;
+    int dr[] = {0, 1, 0, -1};
+    int dc[] = {1, 0, -1, 0};
+
+    int dirs[4] = {0, 1, 2, 3};
+    for (int i = 0; i < 4; i++) {
+        int j = i + rand() % (4 - i);
+        int tmp = dirs[i]; dirs[i] = dirs[j]; dirs[j] = tmp;
+    }
+
+    for (int i = 0; i < 4; i++) {
+        int nr = r + dr[dirs[i]], nc = c + dc[dirs[i]];
+        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS &&
+            *(g->active + nr * COLS + nc) &&
+            *(g->placement + nr * COLS + nc) == -1) {
+
+            int doms[28];
+            for (int k = 0; k < 28; k++) doms[k] = k;
+            for (int k = 0; k < 28; k++) {
+                int j = k + rand() % (28 - k);
+                int tmp = doms[k]; doms[k] = doms[j]; doms[j] = tmp;
+            }
+
+            for (int k = 0; k < 28; k++) {
+                int idx = doms[k];
+                if (!*(g->used + idx)) {
+                    int v1 = (g->dominoes + idx)->a;
+                    int v2 = (g->dominoes + idx)->b;
+                    if (rand() % 2 == 0) { int tmp = v1; v1 = v2; v2 = tmp; }
+
+                    *(g->used + idx) = true;
+                    *(g->placement + r * COLS + c) = idx;
+                    *(g->placement + nr * COLS + nc) = idx;
+                    *(g->field + r * COLS + c) = v1;
+                    *(g->field + nr * COLS + nc) = v2;
+
+                    if (fillBoardRandomly(g)) return true;
+
+                    *(g->used + idx) = false;
+                    *(g->placement + r * COLS + c) = -1;
+                    *(g->placement + nr * COLS + nc) = -1;
+                    *(g->field + r * COLS + c) = -1;
+                    *(g->field + nr * COLS + nc) = -1;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+void generateTask(GameData* g) {
+    generateDominoes(g, 6);
+
+    for (int i = 0; i < ROWS; i++) (*(g->rowHints + i)).clear();
+    for (int i = 0; i < COLS; i++) (*(g->colHints + i)).clear();
+    resetField(g);
+
+    cout << "\n  Генерую нове поле...\n";
+    if (fillBoardRandomly(g)) {
+        for (int r = 0; r < ROWS; r++) {
+            bool seen[7] = {false};
+            for (int c = 0; c < COLS; c++) {
+                if (*(g->active + r * COLS + c)) {
+                    int val = *(g->field + r * COLS + c);
+                    if (!seen[val]) {
+                        seen[val] = true;
+                        (*(g->rowHints + r)).push_back(val);
+                    }
+                }
+            }
+            sort((*(g->rowHints + r)).begin(), (*(g->rowHints + r)).end());
+        }
+        for (int c = 0; c < COLS; c++) {
+            bool seen[7] = {false};
+            for (int r = 0; r < ROWS; r++) {
+                if (*(g->active + r * COLS + c)) {
+                    int val = *(g->field + r * COLS + c);
+                    if (!seen[val]) {
+                        seen[val] = true;
+                        (*(g->colHints + c)).push_back(val);
+                    }
+                }
+            }
+            sort((*(g->colHints + c)).begin(), (*(g->colHints + c)).end());
+        }
+
+        resetField(g);
+        cout << "  Нове завдання готове\n";
+        printField(g, false);
+    } else {
+        cout << "  Не вдалось згенерувати поле, спробуйте ще раз\n";
+    }
 }
 
 void autoSolve(GameData* g) {
     generateDominoes(g, 6);
     resetField(g);
 
-    cout << "\n  шукаю розв'язок...\n";
-
-    auto start = chrono::high_resolution_clock::now();
-    bool success = solve(g);
-    auto end = chrono::high_resolution_clock::now();
-    chrono::duration<double> elapsed = end - start;
-
-    if (success) {
-        cout << "  розв'язок знайдено\n";
+    cout << "\n  Шукаю розв'язок...\n";
+    if (solve(g)) {
+        cout << "  Розв'язок знайдено\n";
         int w = 55;
         printLine(w);
-        printMenuItem("  розв'язок", w);
+        printMenuItem("  Розв'язок", w);
         printLine(w);
         printField(g, true);
-        cout << "\n  використані кісточки:\n";
+        cout << "\n  Використані кісточки:\n";
         printLine(w);
         for (int i = 0; i < g->dominoCount; i++) {
             if (*(g->used + i)) {
@@ -574,11 +677,9 @@ void autoSolve(GameData* g) {
             }
         }
         printLine(w);
-        cout << "  час пошуку: " << elapsed.count() << " с\n";
         runTests(g);
     } else {
-        cout << "\n  розв'язку не знайдено\n";
-        cout << "  час пошуку: " << elapsed.count() << " с\n";
+        cout << "\n  Розв'язку не знайдено\n";
     }
 }
 
@@ -586,10 +687,10 @@ void userSolve(GameData* g) {
     cout << "\n";
     int w = 55;
     printLine(w);
-    printMenuItem("  режим гравця", w);
+    printMenuItem("  Режим гравця", w);
     printLine(w);
-    cout << "\n  вводьте координати двох клітинок та значення\n";
-    cout << "  введіть 0 щоб завершити\n\n";
+    cout << "\n  Вводьте координати двох клітинок та значення\n";
+    cout << "  Введіть 0 щоб завершити\n\n";
 
     generateDominoes(g, 6);
     resetField(g);
@@ -598,44 +699,44 @@ void userSolve(GameData* g) {
     while (true) {
         printField(g, true);
 
-        cout << "\n  рядок першої клітинки (0 = вихід): ";
+        cout << "\n  Рядок першої клітинки (0 = вихід): ";
         int r1 = safeReadInt(0, ROWS);
         if (r1 == 0) break;
 
-        cout << "  колонка першої клітинки: ";
+        cout << "  Колонка першої клітинки: ";
         int c1 = safeReadInt(1, COLS);
 
-        cout << "  рядок другої клітинки: ";
+        cout << "  Рядок другої клітинки: ";
         int r2 = safeReadInt(1, ROWS);
 
-        cout << "  колонка другої клітинки: ";
+        cout << "  Колонка другої клітинки: ";
         int c2 = safeReadInt(1, COLS);
         r1--; c1--; r2--; c2--;
 
         if (!*(g->active + r1 * COLS + c1) || !*(g->active + r2 * COLS + c2)) {
-            cout << "  одна з клітинок неактивна\n";
+            cout << "  Одна з клітинок неактивна\n";
             continue;
         }
         bool adjacent = (r1 == r2 && abs(c1 - c2) == 1) ||
                         (c1 == c2 && abs(r1 - r2) == 1);
         if (!adjacent) {
-            cout << "  клітинки мають бути сусідніми\n";
+            cout << "  Клітинки мають бути сусідніми\n";
             continue;
         }
         if (*(g->placement + r1 * COLS + c1) != -1 ||
             *(g->placement + r2 * COLS + c2) != -1) {
-            cout << "  одна з клітинок вже зайнята\n";
+            cout << "  Одна з клітинок вже зайнята\n";
             continue;
         }
 
-        cout << "  значення першої половинки (0-6): ";
+        cout << "  Значення першої половинки (0-6): ";
         int val1 = safeReadInt(0, 6);
-        cout << "  значення другої половинки (0-6): ";
+        cout << "  Значення другої половинки (0-6): ";
         int val2 = safeReadInt(0, 6);
 
         int idx = *(g->dominoIndexMap + val1 * 7 + val2);
         if (*(userUsed + idx)) {
-            cout << "  кісточка " << val1 << "-" << val2 << " вже використана\n";
+            cout << "  Кісточка " << val1 << "-" << val2 << " вже використана\n";
             continue;
         }
 
@@ -644,7 +745,7 @@ void userSolve(GameData* g) {
         *(g->field + r1 * COLS + c1) = val1;
         *(g->field + r2 * COLS + c2) = val2;
         *(userUsed + idx) = true;
-        cout << "  кісточку " << val1 << "-" << val2 << " розміщено\n";
+        cout << "  Кісточку " << val1 << "-" << val2 << " розміщено\n";
 
         bool allPlaced = true;
         for (int i = 0; i < ROWS * COLS; i++) {
@@ -655,9 +756,9 @@ void userSolve(GameData* g) {
 
         if (allPlaced) {
             if (runTests(g))
-                cout << "\n  правильно, головоломку розв'язано!\n";
+                cout << "\n  Правильно, головоломку розв'язано!\n";
             else
-                cout << "\n  поле заповнене, але є помилки у розміщенні\n";
+                cout << "\n  Поле заповнене, але є помилки у розміщенні\n";
             break;
         }
     }
