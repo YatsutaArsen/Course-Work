@@ -813,10 +813,14 @@ void autoSolve(GameData* g) {
         }
         printLine(w);
         cout << "  Час пошуку: " << elapsed.count() << " с\n";
+        cout << "  Процесор: Intel(R) Core(TM) i5-9300HF CPU @ 2.40GHz\n";
+        cout << "  Пам'ять: 8 ГБ\n";
         runTests(g);
     } else {
         cout << "\n  Розв'язку не знайдено\n";
         cout << "  Час пошуку: " << elapsed.count() << " с\n";
+        cout << "  Процесор: Intel(R) Core(TM) i5-9300HF CPU @ 2.40GHz\n";
+        cout << "  Пам'ять: 8 ГБ\n";
     }
 }
 
