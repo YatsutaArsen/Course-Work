@@ -51,6 +51,9 @@ int  safeReadInt(int minVal, int maxVal);
 void printField(GameData* g, bool showPlacement);
 void generateDominoes(GameData* g, int maxVal);
 bool isHintAllowed(GameData* g, int r, int c, int val);
+bool valueInHints(vector<int>* hints, int val);
+bool checkRowHintsStrict(GameData* g, int r);
+bool checkColHintsStrict(GameData* g, int c);
 bool isTouchAllowed(GameData* g, int r, int c, int val, int dominoIdx);
 bool checkAllTouches(GameData* g);
 bool canSatisfyRow(GameData* g, int r);
@@ -345,25 +348,35 @@ void generateDominoes(GameData* g, int maxVal) {
 }
 
 /* ----------------------------------------------------------------------[<]-
+ Function: valueInHints
+ Synopsis: допоміжна функція — перевіряє, чи є val у списку підказок.
+---------------------------------------------------------------------[>]-*/
+bool valueInHints(vector<int>* hints, int val) {
+    for (int h : *hints) {
+        if (h == val) return true;
+    }
+    return false;
+}
+
+/* ----------------------------------------------------------------------[<]-
  Function: isHintAllowed
  Synopsis: перевіряє чи дозволено розмістити значення val у клітинці (r,c)
            відповідно до підказок рядка і колонки.
+           Якщо для рядка або колонки є підказка, то зайві цифри заборонені.
 ---------------------------------------------------------------------[>]-*/
 bool isHintAllowed(GameData* g, int r, int c, int val) {
-    if (!(*(g->rowHints + r)).empty()) {
-        bool found = false;
-        for (int h : *(g->rowHints + r)) {
-            if (h == val) { found = true; break; }
-        }
-        if (!found) return false;
+    if (val < 0 || val > 6) return false;
+
+    if (!(*(g->rowHints + r)).empty() &&
+        !valueInHints(g->rowHints + r, val)) {
+        return false;
     }
-    if (!(*(g->colHints + c)).empty()) {
-        bool found = false;
-        for (int h : *(g->colHints + c)) {
-            if (h == val) { found = true; break; }
-        }
-        if (!found) return false;
+
+    if (!(*(g->colHints + c)).empty() &&
+        !valueInHints(g->colHints + c, val)) {
+        return false;
     }
+
     return true;
 }
 
@@ -431,26 +444,87 @@ bool checkAllTouches(GameData* g) {
 }
 
 /* ----------------------------------------------------------------------[<]-
+ Function: checkRowHintsStrict
+ Synopsis: строга фінальна перевірка підказки рядка.
+           Множина цифр у рядку має точно збігатися з підказкою:
+           усі потрібні цифри мають бути присутні, зайвих цифр бути не може.
+---------------------------------------------------------------------[>]-*/
+bool checkRowHintsStrict(GameData* g, int r) {
+    if ((*(g->rowHints + r)).empty()) return true;
+
+    bool present[7] = {false};
+    for (int c = 0; c < COLS; c++) {
+        if (!*(g->active + r * COLS + c)) continue;
+
+        int val = *(g->field + r * COLS + c);
+        if (val < 0 || val > 6) return false;
+        present[val] = true;
+    }
+
+    for (int v = 0; v <= 6; v++) {
+        bool mustBePresent = valueInHints(g->rowHints + r, v);
+        if (present[v] != mustBePresent) return false;
+    }
+
+    return true;
+}
+
+/* ----------------------------------------------------------------------[<]-
+ Function: checkColHintsStrict
+ Synopsis: строга фінальна перевірка підказки колонки.
+           Множина цифр у колонці має точно збігатися з підказкою.
+---------------------------------------------------------------------[>]-*/
+bool checkColHintsStrict(GameData* g, int c) {
+    if ((*(g->colHints + c)).empty()) return true;
+
+    bool present[7] = {false};
+    for (int r = 0; r < ROWS; r++) {
+        if (!*(g->active + r * COLS + c)) continue;
+
+        int val = *(g->field + r * COLS + c);
+        if (val < 0 || val > 6) return false;
+        present[val] = true;
+    }
+
+    for (int v = 0; v <= 6; v++) {
+        bool mustBePresent = valueInHints(g->colHints + c, v);
+        if (present[v] != mustBePresent) return false;
+    }
+
+    return true;
+}
+
+/* ----------------------------------------------------------------------[<]-
  Function: canSatisfyRow
- Synopsis: перевіряє чи рядок r ще може виконати свої підказки.
-           Якщо порожніх клітинок менше ніж невиконаних підказок — false.
+ Synopsis: проміжна перевірка для рядка.
+           Вона відкидає зайві цифри одразу і перевіряє, чи вистачає
+           порожніх клітинок для ще невиконаних цифр із підказки.
 ---------------------------------------------------------------------[>]-*/
 bool canSatisfyRow(GameData* g, int r) {
     if ((*(g->rowHints + r)).empty()) return true;
-    int unfulfilled = 0, emptyCells = 0;
-    for (int j = 0; j < COLS; j++) {
-        if (*(g->active + r * COLS + j) && *(g->placement + r * COLS + j) == -1)
+
+    bool present[7] = {false};
+    int emptyCells = 0;
+
+    for (int c = 0; c < COLS; c++) {
+        if (!*(g->active + r * COLS + c)) continue;
+
+        if (*(g->placement + r * COLS + c) == -1) {
             emptyCells++;
-    }
-    for (int h : *(g->rowHints + r)) {
-        bool found = false;
-        for (int j = 0; j < COLS; j++) {
-            if (*(g->active + r * COLS + j) && *(g->field + r * COLS + j) == h) {
-                found = true; break;
-            }
+            continue;
         }
-        if (!found) unfulfilled++;
+
+        int val = *(g->field + r * COLS + c);
+        if (val < 0 || val > 6) return false;
+        if (!valueInHints(g->rowHints + r, val)) return false;
+        present[val] = true;
     }
+
+    int unfulfilled = 0;
+    for (int h : *(g->rowHints + r)) {
+        if (!present[h]) unfulfilled++;
+    }
+
     return emptyCells >= unfulfilled;
 }
 
@@ -460,30 +534,39 @@ bool canSatisfyRow(GameData* g, int r) {
 ---------------------------------------------------------------------[>]-*/
 bool canSatisfyCol(GameData* g, int c) {
     if ((*(g->colHints + c)).empty()) return true;
-    int unfulfilled = 0, emptyCells = 0;
-    for (int i = 0; i < ROWS; i++) {
-        if (*(g->active + i * COLS + c) && *(g->placement + i * COLS + c) == -1)
+
+    bool present[7] = {false};
+    int emptyCells = 0;
+
+    for (int r = 0; r < ROWS; r++) {
+        if (!*(g->active + r * COLS + c)) continue;
+
+        if (*(g->placement + r * COLS + c) == -1) {
             emptyCells++;
-    }
-    for (int h : *(g->colHints + c)) {
-        bool found = false;
-        for (int i = 0; i < ROWS; i++) {
-            if (*(g->active + i * COLS + c) && *(g->field + i * COLS + c) == h) {
-                found = true; break;
-            }
+            continue;
         }
-        if (!found) unfulfilled++;
+
+        int val = *(g->field + r * COLS + c);
+        if (val < 0 || val > 6) return false;
+        if (!valueInHints(g->colHints + c, val)) return false;
+        present[val] = true;
     }
+
+    int unfulfilled = 0;
+    for (int h : *(g->colHints + c)) {
+        if (!present[h]) unfulfilled++;
+    }
+
     return emptyCells >= unfulfilled;
 }
 
 /* ----------------------------------------------------------------------[<]-
  Function: checkHints
- Synopsis: фінальна перевірка — чи всі підказки виконані після заповнення поля.
+ Synopsis: фінальна строга перевірка всіх підказок після заповнення поля.
 ---------------------------------------------------------------------[>]-*/
 bool checkHints(GameData* g) {
-    for (int i = 0; i < ROWS; i++) if (!canSatisfyRow(g, i)) return false;
-    for (int j = 0; j < COLS; j++) if (!canSatisfyCol(g, j)) return false;
+    for (int r = 0; r < ROWS; r++) if (!checkRowHintsStrict(g, r)) return false;
+    for (int c = 0; c < COLS; c++) if (!checkColHintsStrict(g, c)) return false;
     return true;
 }
 
@@ -648,34 +731,20 @@ bool runTests(GameData* g) {
     cout << "  Дотичні половинки різних доміно.... "
          << (touchValid ? "ok" : "не пройдено") << "\n";
 
-    // тест 4: підказки рядків
+    // тест 4: строгі підказки рядків — без пропущених і без зайвих цифр
     bool rowsOk = true;
     for (int r = 0; r < ROWS; r++) {
-        for (int h : *(g->rowHints + r)) {
-            bool found = false;
-            for (int c = 0; c < COLS; c++) {
-                if (*(g->active + r * COLS + c) && *(g->field + r * COLS + c) == h)
-                    found = true;
-            }
-            if (!found) rowsOk = false;
-        }
+        if (!checkRowHintsStrict(g, r)) rowsOk = false;
     }
-    cout << "  Підказки рядків.................... "
+    cout << "  Підказки рядків точно.............. "
          << (rowsOk ? "ok" : "не пройдено") << "\n";
 
-    // тест 5: підказки колонок
+    // тест 5: строгі підказки колонок — без пропущених і без зайвих цифр
     bool colsOk = true;
     for (int c = 0; c < COLS; c++) {
-        for (int h : *(g->colHints + c)) {
-            bool found = false;
-            for (int r = 0; r < ROWS; r++) {
-                if (*(g->active + r * COLS + c) && *(g->field + r * COLS + c) == h)
-                    found = true;
-            }
-            if (!found) colsOk = false;
-        }
+        if (!checkColHintsStrict(g, c)) colsOk = false;
     }
-    cout << "  Підказки колонок................... "
+    cout << "  Підказки колонок точно............. "
          << (colsOk ? "ok" : "не пройдено") << "\n";
 
     printLine(w);
@@ -972,6 +1041,12 @@ void userSolve(GameData* g) {
         int idx = *(g->dominoIndexMap + val1 * 7 + val2);
         if (*(userUsed + idx)) {
             cout << "  Кісточка " << val1 << "-" << val2 << " вже використана\n";
+            continue;
+        }
+
+        if (!isHintAllowed(g, r1, c1, val1) ||
+            !isHintAllowed(g, r2, c2, val2)) {
+            cout << "  Порушено підказки рядка або колонки: у цьому напрямку така цифра зайва\n";
             continue;
         }
 
