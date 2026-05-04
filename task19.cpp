@@ -51,6 +51,8 @@ int  safeReadInt(int minVal, int maxVal);
 void printField(GameData* g, bool showPlacement);
 void generateDominoes(GameData* g, int maxVal);
 bool isHintAllowed(GameData* g, int r, int c, int val);
+bool isTouchAllowed(GameData* g, int r, int c, int val, int dominoIdx);
+bool checkAllTouches(GameData* g);
 bool canSatisfyRow(GameData* g, int r);
 bool canSatisfyCol(GameData* g, int c);
 bool checkHints(GameData* g);
@@ -366,6 +368,69 @@ bool isHintAllowed(GameData* g, int r, int c, int val) {
 }
 
 /* ----------------------------------------------------------------------[<]-
+ Function: isTouchAllowed
+ Synopsis: перевіряє правило дотику з умови.
+           Якщо сусідня клітинка вже заповнена і належить іншому доміно,
+           її цифра має збігатися з val.
+           Половинки одного доміно можуть мати різні цифри, тому вони
+           ігноруються за однаковим індексом dominoIdx.
+---------------------------------------------------------------------[>]-*/
+bool isTouchAllowed(GameData* g, int r, int c, int val, int dominoIdx) {
+    int dr[] = {0, 1, 0, -1};
+    int dc[] = {1, 0, -1, 0};
+
+    for (int i = 0; i < 4; i++) {
+        int nr = r + dr[i];
+        int nc = c + dc[i];
+
+        if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+        if (!*(g->active + nr * COLS + nc)) continue;
+        if (*(g->field + nr * COLS + nc) == -1) continue;
+
+        int neighborDomino = *(g->placement + nr * COLS + nc);
+        if (neighborDomino == dominoIdx) continue;
+
+        if (*(g->field + nr * COLS + nc) != val) return false;
+    }
+    return true;
+}
+
+/* ----------------------------------------------------------------------[<]-
+ Function: checkAllTouches
+ Synopsis: фінально перевіряє всі контакти між різними доміно.
+           Для кожної пари сусідніх активних клітинок, які належать різним
+           кісточкам, значення повинні бути однаковими.
+---------------------------------------------------------------------[>]-*/
+bool checkAllTouches(GameData* g) {
+    int dr[] = {0, 1};
+    int dc[] = {1, 0};
+
+    for (int r = 0; r < ROWS; r++) {
+        for (int c = 0; c < COLS; c++) {
+            if (!*(g->active + r * COLS + c)) continue;
+            if (*(g->field + r * COLS + c) == -1) continue;
+
+            for (int i = 0; i < 2; i++) {
+                int nr = r + dr[i];
+                int nc = c + dc[i];
+
+                if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+                if (!*(g->active + nr * COLS + nc)) continue;
+                if (*(g->field + nr * COLS + nc) == -1) continue;
+
+                int curDomino = *(g->placement + r * COLS + c);
+                int nextDomino = *(g->placement + nr * COLS + nc);
+                if (curDomino != nextDomino &&
+                    *(g->field + r * COLS + c) != *(g->field + nr * COLS + nc)) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+/* ----------------------------------------------------------------------[<]-
  Function: canSatisfyRow
  Synopsis: перевіряє чи рядок r ще може виконати свої підказки.
            Якщо порожніх клітинок менше ніж невиконаних підказок — false.
@@ -447,7 +512,11 @@ bool solve(GameData* g) {
                             if (!isHintAllowed(g, r, c, v1)) continue;
                             for (int v2 = 0; v2 <= 6; v2++) {
                                 if (!isHintAllowed(g, nr, nc, v2)) continue;
-                                if (!*(g->used + *(g->dominoIndexMap + v1 * 7 + v2))) opts++;
+                                int idx = *(g->dominoIndexMap + v1 * 7 + v2);
+                                if (*(g->used + idx)) continue;
+                                if (!isTouchAllowed(g, r, c, v1, idx)) continue;
+                                if (!isTouchAllowed(g, nr, nc, v2, idx)) continue;
+                                opts++;
                             }
                         }
                     }
@@ -481,7 +550,9 @@ bool solve(GameData* g) {
                         *(g->field + r * COLS + c) = v1;
                         *(g->field + nr * COLS + nc) = v2;
 
-                        if (canSatisfyRow(g, r) && canSatisfyCol(g, c) &&
+                        if (isTouchAllowed(g, r, c, v1, idx) &&
+                            isTouchAllowed(g, nr, nc, v2, idx) &&
+                            canSatisfyRow(g, r) && canSatisfyCol(g, c) &&
                             canSatisfyRow(g, nr) && canSatisfyCol(g, nc)) {
                             if (solve(g)) return true;
                         }
@@ -515,8 +586,8 @@ void resetField(GameData* g) {
 
 /* ----------------------------------------------------------------------[<]-
  Function: runTests
- Synopsis: перевіряє коректність розв'язку за 5 критеріями:
-           заповненість, унікальність, сусідство, підказки рядків і колонок.
+ Synopsis: перевіряє коректність розв'язку за 6 критеріями:
+           заповненість, унікальність, сусідство, дотики, підказки рядків і колонок.
 ---------------------------------------------------------------------[>]-*/
 bool runTests(GameData* g) {
     int w = 55;
@@ -573,6 +644,10 @@ bool runTests(GameData* g) {
     cout << "  Сусідство клітинок................. "
          << (adjValid ? "ok" : "не пройдено") << "\n";
 
+    bool touchValid = checkAllTouches(g);
+    cout << "  Дотичні половинки різних доміно.... "
+         << (touchValid ? "ok" : "не пройдено") << "\n";
+
     // тест 4: підказки рядків
     bool rowsOk = true;
     for (int r = 0; r < ROWS; r++) {
@@ -604,7 +679,7 @@ bool runTests(GameData* g) {
          << (colsOk ? "ok" : "не пройдено") << "\n";
 
     printLine(w);
-    if (fullCoverage && uniqueValid && adjValid && valuesValid && rowsOk && colsOk) {
+    if (fullCoverage && uniqueValid && adjValid && valuesValid && touchValid && rowsOk && colsOk) {
         printMenuItem("  Розв'язок правильний", w);
         printLine(w);
         return true;
@@ -719,6 +794,9 @@ bool fillBoardRandomly(GameData* g) {
                     int v1 = (g->dominoes + idx)->a;
                     int v2 = (g->dominoes + idx)->b;
                     if (rand() % 2 == 0) { int tmp = v1; v1 = v2; v2 = tmp; }
+
+                    if (!isTouchAllowed(g, r, c, v1, idx) ||
+                        !isTouchAllowed(g, nr, nc, v2, idx)) continue;
 
                     *(g->used + idx) = true;
                     *(g->placement + r * COLS + c) = idx;
@@ -894,6 +972,12 @@ void userSolve(GameData* g) {
         int idx = *(g->dominoIndexMap + val1 * 7 + val2);
         if (*(userUsed + idx)) {
             cout << "  Кісточка " << val1 << "-" << val2 << " вже використана\n";
+            continue;
+        }
+
+        if (!isTouchAllowed(g, r1, c1, val1, idx) ||
+            !isTouchAllowed(g, r2, c2, val2, idx)) {
+            cout << "  Порушено правило дотику: сусідні половинки різних доміно мають бути однакові\n";
             continue;
         }
 
