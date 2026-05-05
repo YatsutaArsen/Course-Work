@@ -1,8 +1,14 @@
 /* ----------------------------------------------------------------<Header>-
- Name:        task19.cpp
- Title:       Головоломка Доміно
- Description: Розміщення кісточок доміно на полі у формі літер B і G.
-              Алгоритм: рекурсивний перебір з поверненням (MRV + Pruning).
+Name:        task19.cpp
+Title:       Domino Puzzle Solver
+Group:       TV-52
+Student:     Yatsuta Arsen
+Written:     05.05.2026
+Revised:     05.05.2026
+Description: Console program for solving a domino puzzle. The program
+             stores the playing field, generates a complete set of
+             dominoes from 0-0 to 6-6, checks row and column hints and finds
+             a solution using recursive backtracking with pruning.
 ------------------------------------------------------------------</Header>-*/
 
 #include <iostream>
@@ -14,31 +20,28 @@
 #include <ctime>
 #include <chrono>
 using namespace std;
-
 const int ROWS = 11;
 const int COLS = 11;
-
 /* ----------------------------------------------------------------------[<]-
- Struct: Domino
- Synopsis: зберігає два значення однієї кісточки доміно.
+Struct: Domino
+Synopsis: stores two values of one domino tile.
 ---------------------------------------------------------------------[>]-*/
 struct Domino { int a, b; };
-
 /* ----------------------------------------------------------------------[<]-
- Struct: GameData
- Synopsis: містить усі дані гри — поле, кісточки, підказки.
-           Передається у функції через вказівник замість глобальних змінних.
+Struct: GameData
+Synopsis: stores all puzzle data: active cells, current values,
+          tile placement indexes, hints and generated domino set.
 ---------------------------------------------------------------------[>]-*/
 struct GameData {
-    bool*            active;        // активні клітинки поля (форма B і G)
-    int*             field;         // цифри розміщені на клітинках (-1 = порожньо)
-    int*             placement;     // індекс кісточки в клітинці (-1 = порожньо)
-    Domino*          dominoes;      // масив усіх 28 кісточок
-    int              dominoCount;   // кількість згенерованих кісточок
-    bool*            used;          // які кісточки вже використані
-    vector<int>*     rowHints;      // підказки для рядків
-    vector<int>*     colHints;      // підказки для колонок
-    int*             dominoIndexMap;// кеш: [a*7+b] -> індекс кісточки
+    bool*            active;
+    int*             field;
+    int*             placement;
+    Domino*          dominoes;
+    int              dominoCount;
+    bool*            used;
+    vector<int>*     rowHints;
+    vector<int>*     colHints;
+    int*             dominoIndexMap;
 };
 
 void initData(GameData* g);
@@ -49,16 +52,20 @@ void printMenuItem(string text, int width);
 void printMenu();
 int  safeReadInt(int minVal, int maxVal);
 void printField(GameData* g, bool showPlacement);
+int  countActiveCells(GameData* g);
+int  countUsedDominoes(GameData* g);
+void printDominoPositions(GameData* g);
 void generateDominoes(GameData* g, int maxVal);
 bool isHintAllowed(GameData* g, int r, int c, int val);
 bool valueInHints(vector<int>* hints, int val);
-bool checkRowHintsStrict(GameData* g, int r);
-bool checkColHintsStrict(GameData* g, int c);
+bool checkLineHintsStrict(GameData* g, int index, bool row);
 bool isTouchAllowed(GameData* g, int r, int c, int val, int dominoIdx);
 bool checkAllTouches(GameData* g);
-bool canSatisfyRow(GameData* g, int r);
-bool canSatisfyCol(GameData* g, int c);
+bool canSatisfyLine(GameData* g, int index, bool row);
 bool checkHints(GameData* g);
+bool canPlaceDomino(GameData* g, int r1, int c1, int r2, int c2, int v1, int v2);
+void placeDomino(GameData* g, int r1, int c1, int r2, int c2, int v1, int v2, int idx);
+void removeDomino(GameData* g, int r1, int c1, int r2, int c2, int idx);
 bool solve(GameData* g);
 void resetField(GameData* g);
 bool runTests(GameData* g);
@@ -67,16 +74,14 @@ void autoSolve(GameData* g);
 void userSolve(GameData* g);
 bool fillBoardRandomly(GameData* g);
 void generateTask(GameData* g);
-
 /* ----------------------------------------------------------------------[<]-
- Function: main
- Synopsis: точка входу — ініціалізація даних і головний цикл меню.
+Function: main
+Synopsis: initializes puzzle data and runs the main console menu.
 ---------------------------------------------------------------------[>]-*/
 int main() {
     srand(time(0));
     GameData g;
     initData(&g);
-
     int choice = 0;
     do {
         printMenu();
@@ -95,17 +100,17 @@ int main() {
                 cout << "\n";
                 break;
             }
+            default: break;
         }
     } while (choice != 0);
-
     cleanupData(&g);
     return 0;
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: initData
- Synopsis: виділяє динамічну пам'ять і заповнює початкові дані поля,
-           підказок і масивів кісточок.
+Function: initData
+Synopsis: allocates arrays and fills the initial field shape, hints
+          and service structures used by the solver.
 ---------------------------------------------------------------------[>]-*/
 void initData(GameData* g) {
     g->active       = new bool[ROWS * COLS];
@@ -117,10 +122,6 @@ void initData(GameData* g) {
     g->rowHints     = new vector<int>[ROWS];
     g->colHints     = new vector<int>[COLS];
     g->dominoIndexMap = new int[7 * 7];
-
-    // форма поля з умови: ліва фігура B + проміжок + права фігура G
-    // 1 = активна клітинка, 0 = порожнє місце
-    // активних клітинок рівно 56, тобто 28 кісточок доміно
     bool initActive[ROWS][COLS] = {
         {1,1,1,0,0, 0, 0,1,1,1,0},
         {1,0,1,1,0, 0, 1,1,0,1,1},
@@ -142,11 +143,9 @@ void initData(GameData* g) {
     }
 
     for (int i = 0; i < 28; i++) *(g->used + i) = false;
-
     *(g->rowHints + 0) = {2, 0, 1, 5};
     *(g->rowHints + 6) = {1, 3, 4};
     *(g->rowHints + 9) = {0, 2, 3};
-
     *(g->colHints + 0)  = {2, 4, 6};
     *(g->colHints + 2)  = {0, 1, 5};
     *(g->colHints + 4)  = {0, 3, 6};
@@ -156,8 +155,8 @@ void initData(GameData* g) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: cleanupData
- Synopsis: звільняє всю динамічну пам'ять структури GameData.
+Function: cleanupData
+Synopsis: releases all dynamically allocated memory from GameData.
 ---------------------------------------------------------------------[>]-*/
 void cleanupData(GameData* g) {
     delete[] g->active;
@@ -171,9 +170,9 @@ void cleanupData(GameData* g) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: utf8len
- Synopsis: повертає кількість символів рядка з урахуванням UTF-8.
-           Потрібна для правильного вирівнювання рамок меню з українським текстом.
+Function: utf8len
+Synopsis: returns the visual length of a UTF-8 string for correct
+          alignment of Ukrainian menu text.
 ---------------------------------------------------------------------[>]-*/
 int utf8len(const string& s) {
     int len = 0;
@@ -188,8 +187,8 @@ int utf8len(const string& s) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: printLine
- Synopsis: виводить горизонтальну лінію рамки заданої ширини.
+Function: printLine
+Synopsis: prints a horizontal menu border with a selected width.
 ---------------------------------------------------------------------[>]-*/
 void printLine(int width) {
     cout << "+";
@@ -198,8 +197,8 @@ void printLine(int width) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: printMenuItem
- Synopsis: виводить один рядок меню з вирівнюванням по правому краю рамки.
+Function: printMenuItem
+Synopsis: prints one formatted menu line inside a text frame.
 ---------------------------------------------------------------------[>]-*/
 void printMenuItem(string text, int width) {
     cout << "| " << text;
@@ -208,8 +207,8 @@ void printMenuItem(string text, int width) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: printMenu
- Synopsis: виводить головне меню програми.
+Function: printMenu
+Synopsis: displays the main menu of the console application.
 ---------------------------------------------------------------------[>]-*/
 void printMenu() {
     int w = 55;
@@ -228,9 +227,9 @@ void printMenu() {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: safeReadInt
- Synopsis: читає ціле число з перевіркою діапазону.
-           Повторює запит доки не буде введено коректне значення.
+Function: safeReadInt
+Synopsis: reads an integer value and repeats input until it belongs
+          to the required range.
 ---------------------------------------------------------------------[>]-*/
 int safeReadInt(int minVal, int maxVal) {
     string line;
@@ -255,84 +254,161 @@ int safeReadInt(int minVal, int maxVal) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: printField
- Synopsis: виводить поле у двох режимах:
-           sp=false — початкове поле зі знаками #;
-           sp=true  — поле з розміщеними кісточками і цифрами.
+Function: printField
+Synopsis: prints the puzzle field. Empty active cells are shown as #,
+          solved cells as numbers, and borders visualize dominoes.
 ---------------------------------------------------------------------[>]-*/
 void printField(GameData* g, bool sp) {
-    cout << "\n  +";
-    for (int j = 0; j < COLS; j++) cout << (sp ? "----+" : "---+");
     cout << "\n";
-
-    for (int i = 0; i < ROWS; i++) {
-        cout << "  |";
-        for (int j = 0; j < COLS; j++) {
-            if (!*(g->active + i * COLS + j)) {
-                cout << (sp ? "    |" : "   |");
+    cout << "  Пояснення: # = активна порожня клітинка, . = неактивне місце, цифра = половинка доміно\n";
+    cout << "             між половинками одного доміно межа не друкується.\n\n";
+    cout << "       ";
+    for (int c = 0; c < COLS; c++) {
+        if (c + 1 < 10) cout << "  " << c + 1 << " ";
+        else            cout << " " << c + 1 << " ";
+    }
+    cout << "\n";
+    for (int r = 0; r < ROWS; r++) {
+        cout << "     ";
+        for (int c = 0; c < COLS; c++) {
+            bool activeCell = *(g->active + r * COLS + c);
+            if (!activeCell) {
+                cout << "    ";
                 continue;
             }
-            if (!sp) { cout << " # |"; continue; }
 
-            // визначаємо правий кордон між клітинками однієї кісточки
-            string rightBorder = "|";
-            if (j + 1 < COLS &&
-                *(g->active + i * COLS + (j + 1)) &&
-                *(g->placement + i * COLS + j) != -1 &&
-                *(g->placement + i * COLS + j) == *(g->placement + i * COLS + (j + 1))) {
-                rightBorder = " ";
+            bool sameAsTop = false;
+            if (sp && r > 0 && *(g->active + (r - 1) * COLS + c) &&
+                *(g->placement + r * COLS + c) != -1 &&
+                *(g->placement + r * COLS + c) == *(g->placement + (r - 1) * COLS + c)) {
+                sameAsTop = true;
             }
-            if (*(g->field + i * COLS + j) >= 0)
-                cout << " " << *(g->field + i * COLS + j) << " " << rightBorder;
-            else
-                cout << " . " << rightBorder;
-        }
 
-        if (!(*(g->rowHints + i)).empty()) {
-            cout << "  <";
-            for (int h : *(g->rowHints + i)) cout << " " << h;
+            if (sameAsTop) cout << "    ";
+            else           cout << "+---";
         }
-
-        cout << "\n  +";
-        for (int j = 0; j < COLS; j++) {
-            // прибираємо нижню стінку між клітинками вертикальної кісточки
-            if (sp && i + 1 < ROWS &&
-                *(g->active + i * COLS + j) &&
-                *(g->active + (i + 1) * COLS + j) &&
-                *(g->placement + i * COLS + j) != -1 &&
-                *(g->placement + i * COLS + j) == *(g->placement + (i + 1) * COLS + j)) {
-                cout << "    +";
-            } else {
-                cout << (sp ? "----+" : "---+");
+        cout << "+\n";
+        if (r + 1 < 10) cout << "   " << r + 1 << " ";
+        else            cout << "  " << r + 1 << " ";
+        for (int c = 0; c < COLS; c++) {
+            bool activeCell = *(g->active + r * COLS + c);
+            if (!activeCell) {
+                cout << "    ";
+                continue;
             }
+
+            bool sameAsLeft = false;
+            if (sp && c > 0 && *(g->active + r * COLS + (c - 1)) &&
+                *(g->placement + r * COLS + c) != -1 &&
+                *(g->placement + r * COLS + c) == *(g->placement + r * COLS + (c - 1))) {
+                sameAsLeft = true;
+            }
+
+            if (sameAsLeft) cout << " ";
+            else            cout << "|";
+            char symbol = '#';
+            if (sp) {
+                int val = *(g->field + r * COLS + c);
+                symbol = (val >= 0 && val <= 9) ? char('0' + val) : '#';
+            }
+            cout << " " << symbol << " ";
+        }
+        cout << "|";
+        if (!(*(g->rowHints + r)).empty()) {
+            cout << "   <";
+            for (int h : *(g->rowHints + r)) cout << " " << h;
         }
         cout << "\n";
     }
 
-    cout << "    ";
-    for (int j = 0; j < COLS; j++) {
-        if (!(*(g->colHints + j)).empty())
-            cout << (sp ? "  ^  " : "  ^ ");
-        else
-            cout << (sp ? "     " : "    ");
+    cout << "     ";
+    for (int c = 0; c < COLS; c++) {
+        if (*(g->active + (ROWS - 1) * COLS + c)) cout << "+---";
+        else                                      cout << "    ";
+    }
+    cout << "+\n";
+    cout << "       ";
+    for (int c = 0; c < COLS; c++) {
+        if (!(*(g->colHints + c)).empty()) cout << "  ^ ";
+        else                               cout << "    ";
     }
     cout << "\n";
-    for (int line = 0; line < 4; line++) {
-        cout << "    ";
-        for (int j = 0; j < COLS; j++) {
-            if (line < (int)(*(g->colHints + j)).size())
-                cout << "  " << (*(g->colHints + j))[line] << (sp ? "  " : " ");
+    int maxHintHeight = 0;
+    for (int c = 0; c < COLS; c++) {
+        if ((int)(*(g->colHints + c)).size() > maxHintHeight)
+            maxHintHeight = (*(g->colHints + c)).size();
+    }
+
+    for (int line = 0; line < maxHintHeight; line++) {
+        cout << "       ";
+        for (int c = 0; c < COLS; c++) {
+            if (line < (int)(*(g->colHints + c)).size())
+                cout << "  " << (*(g->colHints + c))[line] << " ";
             else
-                cout << (sp ? "     " : "    ");
+                cout << "    ";
         }
         cout << "\n";
     }
+
+    cout << "\n  Активних клітинок: " << countActiveCells(g)
+         << " / потрібно 56 для 28 доміно\n";
+    if (sp) cout << "  Використано доміно: " << countUsedDominoes(g) << " / 28\n";
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: generateDominoes
- Synopsis: генерує всі кісточки від 0-0 до maxVal-maxVal і заповнює
-           кеш dominoIndexMap в обидва боки (0-1 і 1-0 — одна кісточка).
+Function: countActiveCells
+Synopsis: counts all playable cells of the current field shape.
+---------------------------------------------------------------------[>]-*/
+int countActiveCells(GameData* g) {
+    int cnt = 0;
+    for (int i = 0; i < ROWS * COLS; i++) {
+        if (*(g->active + i)) cnt++;
+    }
+    return cnt;
+}
+
+/* ----------------------------------------------------------------------[<]-
+Function: countUsedDominoes
+Synopsis: counts how many domino tiles are currently marked as used.
+---------------------------------------------------------------------[>]-*/
+int countUsedDominoes(GameData* g) {
+    int cnt = 0;
+    for (int i = 0; i < 28; i++) {
+        if (*(g->used + i)) cnt++;
+    }
+    return cnt;
+}
+
+/* ----------------------------------------------------------------------[<]-
+Function: printDominoPositions
+Synopsis: prints coordinates of every placed domino tile in the field.
+---------------------------------------------------------------------[>]-*/
+void printDominoPositions(GameData* g) {
+    cout << "\n  Розташування кісточок за координатами:\n";
+    printLine(55);
+    for (int idx = 0; idx < g->dominoCount; idx++) {
+        if (!*(g->used + idx)) continue;
+        int r1 = -1, c1 = -1, r2 = -1, c2 = -1;
+        for (int pos = 0; pos < ROWS * COLS; pos++) {
+            if (*(g->active + pos) && *(g->placement + pos) == idx) {
+                if (r1 == -1) { r1 = pos / COLS; c1 = pos % COLS; }
+                else          { r2 = pos / COLS; c2 = pos % COLS; }
+            }
+        }
+
+        string line = "  " + to_string((g->dominoes + idx)->a) + "-" +
+                      to_string((g->dominoes + idx)->b) + ": (" +
+                      to_string(r1 + 1) + "," + to_string(c1 + 1) + ") і (" +
+                      to_string(r2 + 1) + "," + to_string(c2 + 1) + ")";
+        printMenuItem(line, 55);
+    }
+    printLine(55);
+}
+
+/* ----------------------------------------------------------------------[<]-
+Function: generateDominoes
+Synopsis: creates all domino tiles from 0-0 to maxVal-maxVal and fills
+          the fast index map for both value orders.
 ---------------------------------------------------------------------[>]-*/
 void generateDominoes(GameData* g, int maxVal) {
     g->dominoCount = 0;
@@ -348,8 +424,8 @@ void generateDominoes(GameData* g, int maxVal) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: valueInHints
- Synopsis: допоміжна функція — перевіряє, чи є val у списку підказок.
+Function: valueInHints
+Synopsis: checks whether a value is present in the specified hint list.
 ---------------------------------------------------------------------[>]-*/
 bool valueInHints(vector<int>* hints, int val) {
     for (int h : *hints) {
@@ -359,14 +435,12 @@ bool valueInHints(vector<int>* hints, int val) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: isHintAllowed
- Synopsis: перевіряє чи дозволено розмістити значення val у клітинці (r,c)
-           відповідно до підказок рядка і колонки.
-           Якщо для рядка або колонки є підказка, то зайві цифри заборонені.
+Function: isHintAllowed
+Synopsis: checks whether a value can be placed in the selected cell
+          according to row and column hint restrictions.
 ---------------------------------------------------------------------[>]-*/
 bool isHintAllowed(GameData* g, int r, int c, int val) {
     if (val < 0 || val > 6) return false;
-
     if (!(*(g->rowHints + r)).empty() &&
         !valueInHints(g->rowHints + r, val)) {
         return false;
@@ -381,56 +455,44 @@ bool isHintAllowed(GameData* g, int r, int c, int val) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: isTouchAllowed
- Synopsis: перевіряє правило дотику з умови.
-           Якщо сусідня клітинка вже заповнена і належить іншому доміно,
-           її цифра має збігатися з val.
-           Половинки одного доміно можуть мати різні цифри, тому вони
-           ігноруються за однаковим індексом dominoIdx.
+Function: isTouchAllowed
+Synopsis: verifies that adjacent halves of different dominoes contain
+          equal values, as required by the puzzle rules.
 ---------------------------------------------------------------------[>]-*/
 bool isTouchAllowed(GameData* g, int r, int c, int val, int dominoIdx) {
     int dr[] = {0, 1, 0, -1};
     int dc[] = {1, 0, -1, 0};
-
     for (int i = 0; i < 4; i++) {
         int nr = r + dr[i];
         int nc = c + dc[i];
-
         if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
         if (!*(g->active + nr * COLS + nc)) continue;
         if (*(g->field + nr * COLS + nc) == -1) continue;
-
         int neighborDomino = *(g->placement + nr * COLS + nc);
         if (neighborDomino == dominoIdx) continue;
-
         if (*(g->field + nr * COLS + nc) != val) return false;
     }
     return true;
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: checkAllTouches
- Synopsis: фінально перевіряє всі контакти між різними доміно.
-           Для кожної пари сусідніх активних клітинок, які належать різним
-           кісточкам, значення повинні бути однаковими.
+Function: checkAllTouches
+Synopsis: performs final validation of all contacts between neighboring
+          cells that belong to different dominoes.
 ---------------------------------------------------------------------[>]-*/
 bool checkAllTouches(GameData* g) {
     int dr[] = {0, 1};
     int dc[] = {1, 0};
-
     for (int r = 0; r < ROWS; r++) {
         for (int c = 0; c < COLS; c++) {
             if (!*(g->active + r * COLS + c)) continue;
             if (*(g->field + r * COLS + c) == -1) continue;
-
             for (int i = 0; i < 2; i++) {
                 int nr = r + dr[i];
                 int nc = c + dc[i];
-
                 if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
                 if (!*(g->active + nr * COLS + nc)) continue;
                 if (*(g->field + nr * COLS + nc) == -1) continue;
-
                 int curDomino = *(g->placement + r * COLS + c);
                 int nextDomino = *(g->placement + nr * COLS + nc);
                 if (curDomino != nextDomino &&
@@ -444,220 +506,181 @@ bool checkAllTouches(GameData* g) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: checkRowHintsStrict
- Synopsis: строга фінальна перевірка підказки рядка.
-           Множина цифр у рядку має точно збігатися з підказкою:
-           усі потрібні цифри мають бути присутні, зайвих цифр бути не може.
+Function: checkLineHintsStrict
+Synopsis: strictly compares the set of values in a row or column with
+          the corresponding hint list, without allowing extra values.
 ---------------------------------------------------------------------[>]-*/
-bool checkRowHintsStrict(GameData* g, int r) {
-    if ((*(g->rowHints + r)).empty()) return true;
-
+bool checkLineHintsStrict(GameData* g, int index, bool row) {
+    vector<int>* hints = row ? g->rowHints + index : g->colHints + index;
+    if (hints->empty()) return true;
     bool present[7] = {false};
-    for (int c = 0; c < COLS; c++) {
+    int limit = row ? COLS : ROWS;
+    for (int i = 0; i < limit; i++) {
+        int r = row ? index : i;
+        int c = row ? i : index;
         if (!*(g->active + r * COLS + c)) continue;
-
         int val = *(g->field + r * COLS + c);
         if (val < 0 || val > 6) return false;
         present[val] = true;
     }
 
     for (int v = 0; v <= 6; v++) {
-        bool mustBePresent = valueInHints(g->rowHints + r, v);
-        if (present[v] != mustBePresent) return false;
+        if (present[v] != valueInHints(hints, v)) return false;
     }
-
     return true;
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: checkColHintsStrict
- Synopsis: строга фінальна перевірка підказки колонки.
-           Множина цифр у колонці має точно збігатися з підказкою.
+Function: canSatisfyLine
+Synopsis: checks whether a partially filled row or column can still
+          satisfy its hints during recursive search.
 ---------------------------------------------------------------------[>]-*/
-bool checkColHintsStrict(GameData* g, int c) {
-    if ((*(g->colHints + c)).empty()) return true;
-
-    bool present[7] = {false};
-    for (int r = 0; r < ROWS; r++) {
-        if (!*(g->active + r * COLS + c)) continue;
-
-        int val = *(g->field + r * COLS + c);
-        if (val < 0 || val > 6) return false;
-        present[val] = true;
-    }
-
-    for (int v = 0; v <= 6; v++) {
-        bool mustBePresent = valueInHints(g->colHints + c, v);
-        if (present[v] != mustBePresent) return false;
-    }
-
-    return true;
-}
-
-/* ----------------------------------------------------------------------[<]-
- Function: canSatisfyRow
- Synopsis: проміжна перевірка для рядка.
-           Вона відкидає зайві цифри одразу і перевіряє, чи вистачає
-           порожніх клітинок для ще невиконаних цифр із підказки.
----------------------------------------------------------------------[>]-*/
-bool canSatisfyRow(GameData* g, int r) {
-    if ((*(g->rowHints + r)).empty()) return true;
-
+bool canSatisfyLine(GameData* g, int index, bool row) {
+    vector<int>* hints = row ? g->rowHints + index : g->colHints + index;
+    if (hints->empty()) return true;
     bool present[7] = {false};
     int emptyCells = 0;
-
-    for (int c = 0; c < COLS; c++) {
+    int limit = row ? COLS : ROWS;
+    for (int i = 0; i < limit; i++) {
+        int r = row ? index : i;
+        int c = row ? i : index;
         if (!*(g->active + r * COLS + c)) continue;
-
         if (*(g->placement + r * COLS + c) == -1) {
             emptyCells++;
             continue;
         }
 
         int val = *(g->field + r * COLS + c);
-        if (val < 0 || val > 6) return false;
-        if (!valueInHints(g->rowHints + r, val)) return false;
+        if (val < 0 || val > 6 || !valueInHints(hints, val)) return false;
         present[val] = true;
     }
 
     int unfulfilled = 0;
-    for (int h : *(g->rowHints + r)) {
-        if (!present[h]) unfulfilled++;
-    }
-
+    for (int h : *hints) if (!present[h]) unfulfilled++;
     return emptyCells >= unfulfilled;
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: canSatisfyCol
- Synopsis: те саме що canSatisfyRow, але для колонки c.
----------------------------------------------------------------------[>]-*/
-bool canSatisfyCol(GameData* g, int c) {
-    if ((*(g->colHints + c)).empty()) return true;
-
-    bool present[7] = {false};
-    int emptyCells = 0;
-
-    for (int r = 0; r < ROWS; r++) {
-        if (!*(g->active + r * COLS + c)) continue;
-
-        if (*(g->placement + r * COLS + c) == -1) {
-            emptyCells++;
-            continue;
-        }
-
-        int val = *(g->field + r * COLS + c);
-        if (val < 0 || val > 6) return false;
-        if (!valueInHints(g->colHints + c, val)) return false;
-        present[val] = true;
-    }
-
-    int unfulfilled = 0;
-    for (int h : *(g->colHints + c)) {
-        if (!present[h]) unfulfilled++;
-    }
-
-    return emptyCells >= unfulfilled;
-}
-
-/* ----------------------------------------------------------------------[<]-
- Function: checkHints
- Synopsis: фінальна строга перевірка всіх підказок після заповнення поля.
+Function: checkHints
+Synopsis: validates all row and column hints in the final board state.
 ---------------------------------------------------------------------[>]-*/
 bool checkHints(GameData* g) {
-    for (int r = 0; r < ROWS; r++) if (!checkRowHintsStrict(g, r)) return false;
-    for (int c = 0; c < COLS; c++) if (!checkColHintsStrict(g, c)) return false;
+    for (int r = 0; r < ROWS; r++) if (!checkLineHintsStrict(g, r, true)) return false;
+    for (int c = 0; c < COLS; c++) if (!checkLineHintsStrict(g, c, false)) return false;
     return true;
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: solve
- Synopsis: рекурсивний розв'язувач з евристикою MRV.
-           Обирає клітинку з найменшою кількістю варіантів і пробує всі
-           можливі кісточки. При тупику — відкатується (backtracking).
+Function: canPlaceDomino
+Synopsis: checks all placement constraints for one domino: activity,
+          adjacency, occupation, uniqueness, hints and touching rules.
+---------------------------------------------------------------------[>]-*/
+bool canPlaceDomino(GameData* g, int r1, int c1, int r2, int c2, int v1, int v2) {
+    if (r1 < 0 || r1 >= ROWS || c1 < 0 || c1 >= COLS) return false;
+    if (r2 < 0 || r2 >= ROWS || c2 < 0 || c2 >= COLS) return false;
+    if (!*(g->active + r1 * COLS + c1) || !*(g->active + r2 * COLS + c2)) return false;
+    if (*(g->placement + r1 * COLS + c1) != -1) return false;
+    if (*(g->placement + r2 * COLS + c2) != -1) return false;
+    bool adjacent = (r1 == r2 && abs(c1 - c2) == 1) ||
+                    (c1 == c2 && abs(r1 - r2) == 1);
+    if (!adjacent) return false;
+    if (!isHintAllowed(g, r1, c1, v1)) return false;
+    if (!isHintAllowed(g, r2, c2, v2)) return false;
+    int idx = *(g->dominoIndexMap + v1 * 7 + v2);
+    if (*(g->used + idx)) return false;
+    if (!isTouchAllowed(g, r1, c1, v1, idx)) return false;
+    if (!isTouchAllowed(g, r2, c2, v2, idx)) return false;
+    placeDomino(g, r1, c1, r2, c2, v1, v2, idx);
+    bool ok = canSatisfyLine(g, r1, true) && canSatisfyLine(g, c1, false) &&
+              canSatisfyLine(g, r2, true) && canSatisfyLine(g, c2, false);
+    removeDomino(g, r1, c1, r2, c2, idx);
+    return ok;
+}
+
+/* ----------------------------------------------------------------------[<]-
+Function: placeDomino
+Synopsis: puts a domino on the field and marks its tile index as used.
+---------------------------------------------------------------------[>]-*/
+void placeDomino(GameData* g, int r1, int c1, int r2, int c2, int v1, int v2, int idx) {
+    *(g->used + idx) = true;
+    *(g->placement + r1 * COLS + c1) = idx;
+    *(g->placement + r2 * COLS + c2) = idx;
+    *(g->field + r1 * COLS + c1) = v1;
+    *(g->field + r2 * COLS + c2) = v2;
+}
+
+/* ----------------------------------------------------------------------[<]-
+Function: removeDomino
+Synopsis: removes a previously placed domino and restores search state.
+---------------------------------------------------------------------[>]-*/
+void removeDomino(GameData* g, int r1, int c1, int r2, int c2, int idx) {
+    *(g->used + idx) = false;
+    *(g->placement + r1 * COLS + c1) = -1;
+    *(g->placement + r2 * COLS + c2) = -1;
+    *(g->field + r1 * COLS + c1) = -1;
+    *(g->field + r2 * COLS + c2) = -1;
+}
+
+/* ----------------------------------------------------------------------[<]-
+Function: solve
+Synopsis: solves the puzzle using recursive backtracking with MRV-style
+          selection of the cell with the smallest number of options.
 ---------------------------------------------------------------------[>]-*/
 bool solve(GameData* g) {
-    int bestR = -1, bestC = -1, minOpts = 999999, emptyCount = 0;
+    int bestR = -1, bestC = -1;
+    int minOpts = 999999;
+    int emptyCount = 0;
     int dr[] = {0, 1, 0, -1};
     int dc[] = {1, 0, -1, 0};
-
     for (int r = 0; r < ROWS; r++) {
         for (int c = 0; c < COLS; c++) {
-            if (*(g->active + r * COLS + c) && *(g->placement + r * COLS + c) == -1) {
-                emptyCount++;
-                int opts = 0;
-                for (int i = 0; i < 4; i++) {
-                    int nr = r + dr[i], nc = c + dc[i];
-                    if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS &&
-                        *(g->active + nr * COLS + nc) &&
-                        *(g->placement + nr * COLS + nc) == -1) {
-                        for (int v1 = 0; v1 <= 6; v1++) {
-                            if (!isHintAllowed(g, r, c, v1)) continue;
-                            for (int v2 = 0; v2 <= 6; v2++) {
-                                if (!isHintAllowed(g, nr, nc, v2)) continue;
-                                int idx = *(g->dominoIndexMap + v1 * 7 + v2);
-                                if (*(g->used + idx)) continue;
-                                if (!isTouchAllowed(g, r, c, v1, idx)) continue;
-                                if (!isTouchAllowed(g, nr, nc, v2, idx)) continue;
-                                opts++;
-                            }
-                        }
+            if (!*(g->active + r * COLS + c)) continue;
+            if (*(g->placement + r * COLS + c) != -1) continue;
+            emptyCount++;
+            int opts = 0;
+            for (int d = 0; d < 4; d++) {
+                int nr = r + dr[d];
+                int nc = c + dc[d];
+                for (int v1 = 0; v1 <= 6; v1++) {
+                    for (int v2 = 0; v2 <= 6; v2++) {
+                        if (canPlaceDomino(g, r, c, nr, nc, v1, v2)) opts++;
                     }
                 }
-                if (opts == 0) return false; // тупик — жодного варіанту
-                if (opts < minOpts) {
-                    minOpts = opts; bestR = r; bestC = c;
-                }
+            }
+
+            if (opts == 0) return false;
+            if (opts < minOpts) {
+                minOpts = opts;
+                bestR = r;
+                bestC = c;
             }
         }
     }
 
-    if (emptyCount == 0) return checkHints(g);
+    if (emptyCount == 0) {
+        return checkHints(g) && checkAllTouches(g) && countUsedDominoes(g) == 28;
+    }
 
-    int r = bestR, c = bestC;
-    for (int i = 0; i < 4; i++) {
-        int nr = r + dr[i], nc = c + dc[i];
-        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS &&
-            *(g->active + nr * COLS + nc) &&
-            *(g->placement + nr * COLS + nc) == -1) {
-            for (int v1 = 0; v1 <= 6; v1++) {
-                if (!isHintAllowed(g, r, c, v1)) continue;
-                for (int v2 = 0; v2 <= 6; v2++) {
-                    if (!isHintAllowed(g, nr, nc, v2)) continue;
-                    int idx = *(g->dominoIndexMap + v1 * 7 + v2);
-                    if (!*(g->used + idx)) {
-                        // розміщуємо кісточку
-                        *(g->used + idx) = true;
-                        *(g->placement + r * COLS + c) = idx;
-                        *(g->placement + nr * COLS + nc) = idx;
-                        *(g->field + r * COLS + c) = v1;
-                        *(g->field + nr * COLS + nc) = v2;
-
-                        if (isTouchAllowed(g, r, c, v1, idx) &&
-                            isTouchAllowed(g, nr, nc, v2, idx) &&
-                            canSatisfyRow(g, r) && canSatisfyCol(g, c) &&
-                            canSatisfyRow(g, nr) && canSatisfyCol(g, nc)) {
-                            if (solve(g)) return true;
-                        }
-
-                        // відкатуємось
-                        *(g->used + idx) = false;
-                        *(g->placement + r * COLS + c) = -1;
-                        *(g->placement + nr * COLS + nc) = -1;
-                        *(g->field + r * COLS + c) = -1;
-                        *(g->field + nr * COLS + nc) = -1;
-                    }
-                }
+    for (int d = 0; d < 4; d++) {
+        int nr = bestR + dr[d];
+        int nc = bestC + dc[d];
+        for (int v1 = 0; v1 <= 6; v1++) {
+            for (int v2 = 0; v2 <= 6; v2++) {
+                if (!canPlaceDomino(g, bestR, bestC, nr, nc, v1, v2)) continue;
+                int idx = *(g->dominoIndexMap + v1 * 7 + v2);
+                placeDomino(g, bestR, bestC, nr, nc, v1, v2, idx);
+                if (solve(g)) return true;
+                removeDomino(g, bestR, bestC, nr, nc, idx);
             }
         }
     }
+
     return false;
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: resetField
- Synopsis: скидає поле до початкового стану — всі клітинки порожні,
-           всі кісточки невикористані.
+Function: resetField
+Synopsis: clears all placed values and marks every domino as unused.
 ---------------------------------------------------------------------[>]-*/
 void resetField(GameData* g) {
     for (int i = 0; i < ROWS * COLS; i++) {
@@ -668,9 +691,9 @@ void resetField(GameData* g) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: runTests
- Synopsis: перевіряє коректність розв'язку за 6 критеріями:
-           заповненість, унікальність, сусідство, дотики, підказки рядків і колонок.
+Function: runTests
+Synopsis: checks the current solution for field size, coverage, domino
+          uniqueness, adjacency, touching rule and exact hints.
 ---------------------------------------------------------------------[>]-*/
 bool runTests(GameData* g) {
     int w = 55;
@@ -678,8 +701,9 @@ bool runTests(GameData* g) {
     printLine(w);
     printMenuItem("  Перевірка розв'язку", w);
     printLine(w);
-
-    // тест 1: заповненість поля
+    bool shapeValid = countActiveCells(g) == 56;
+    cout << "  Кількість активних клітинок........ "
+         << (shapeValid ? "ok" : "не пройдено") << "\n";
     bool fullCoverage = true;
     for (int i = 0; i < ROWS * COLS; i++) {
         if (*(g->active + i) && *(g->placement + i) == -1) fullCoverage = false;
@@ -693,7 +717,6 @@ bool runTests(GameData* g) {
         return false;
     }
 
-    // тест 2 і 3: унікальність кісточок і правильність їх значень + сусідство
     bool uniqueValid = true, adjValid = true, valuesValid = true;
     int counts[28] = {0};
     for (int i = 0; i < ROWS * COLS; i++) {
@@ -713,7 +736,6 @@ bool runTests(GameData* g) {
             bool adj = (r1 == r2 && abs(c1 - c2) == 1) ||
                        (c1 == c2 && abs(r1 - r2) == 1);
             if (!adj) adjValid = false;
-
             int v1 = *(g->field + r1 * COLS + c1);
             int v2 = *(g->field + r2 * COLS + c2);
             int da = (g->dominoes + i)->a;
@@ -722,33 +744,30 @@ bool runTests(GameData* g) {
                 valuesValid = false;
         }
     }
+    bool allUsed = countUsedDominoes(g) == 28;
     cout << "  Унікальність кісточок.............. "
          << ((uniqueValid && valuesValid) ? "ok" : "не пройдено") << "\n";
+    cout << "  Використано всі 28 кісточок........ "
+         << (allUsed ? "ok" : "не пройдено") << "\n";
     cout << "  Сусідство клітинок................. "
          << (adjValid ? "ok" : "не пройдено") << "\n";
-
     bool touchValid = checkAllTouches(g);
     cout << "  Дотичні половинки різних доміно.... "
          << (touchValid ? "ok" : "не пройдено") << "\n";
-
-    // тест 4: строгі підказки рядків — без пропущених і без зайвих цифр
     bool rowsOk = true;
     for (int r = 0; r < ROWS; r++) {
-        if (!checkRowHintsStrict(g, r)) rowsOk = false;
+        if (!checkLineHintsStrict(g, r, true)) rowsOk = false;
     }
     cout << "  Підказки рядків точно.............. "
          << (rowsOk ? "ok" : "не пройдено") << "\n";
-
-    // тест 5: строгі підказки колонок — без пропущених і без зайвих цифр
     bool colsOk = true;
     for (int c = 0; c < COLS; c++) {
-        if (!checkColHintsStrict(g, c)) colsOk = false;
+        if (!checkLineHintsStrict(g, c, false)) colsOk = false;
     }
     cout << "  Підказки колонок точно............. "
          << (colsOk ? "ok" : "не пройдено") << "\n";
-
     printLine(w);
-    if (fullCoverage && uniqueValid && adjValid && valuesValid && touchValid && rowsOk && colsOk) {
+    if (shapeValid && fullCoverage && uniqueValid && valuesValid && allUsed && adjValid && touchValid && rowsOk && colsOk) {
         printMenuItem("  Розв'язок правильний", w);
         printLine(w);
         return true;
@@ -760,9 +779,9 @@ bool runTests(GameData* g) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: runDeveloperTests
- Synopsis: інженерне тестування — 4 сценарії що перевіряють чи система
-           правильно відхиляє некоректні розв'язки.
+Function: runDeveloperTests
+Synopsis: runs diagnostic scenarios that verify acceptance of a correct
+          solution and rejection of invalid board states.
 ---------------------------------------------------------------------[>]-*/
 void runDeveloperTests(GameData* g) {
     int w = 55;
@@ -770,34 +789,49 @@ void runDeveloperTests(GameData* g) {
     printLine(w);
     printMenuItem("  Інженерне тестування", w);
     printLine(w);
-
     generateDominoes(g, 6);
+    bool allDeveloperTestsPassed = true;
+    cout << "\n  Тест 1: правильність форми поля\n";
+    bool t0 = countActiveCells(g) == 56;
+    if (t0) cout << "  Поле має 56 активних клітинок\n";
+    else {
+        cout << "  Помилка: кількість активних клітинок не дорівнює 56\n";
+        allDeveloperTestsPassed = false;
+    }
 
-    cout << "\n  Тест 1: порожнє поле\n";
+    cout << "\n  Тест 2: порожнє поле\n";
     resetField(g);
     printField(g, true);
     bool t1 = runTests(g);
     if (!t1) cout << "  Система правильно відхилила порожнє поле\n";
-    else     cout << "  Помилка: система прийняла порожнє поле\n";
+    else {
+        cout << "  Помилка: система прийняла порожнє поле\n";
+        allDeveloperTestsPassed = false;
+    }
 
-    cout << "\n  Тест 2: правильний розв'язок\n";
+    cout << "\n  Тест 3: правильний розв'язок\n";
     resetField(g);
-    solve(g);
+    bool solved = solve(g);
     printField(g, true);
-    bool t2 = runTests(g);
-    if (t2)  cout << "  Система правильно прийняла коректний розв'язок\n";
-    else     cout << "  Помилка: система відхилила правильний розв'язок\n";
+    bool t2 = solved && runTests(g);
+    if (t2) cout << "  Система правильно прийняла коректний розв'язок\n";
+    else {
+        cout << "  Помилка: система не змогла підтвердити правильний розв'язок\n";
+        allDeveloperTestsPassed = false;
+    }
 
-    cout << "\n  Тест 3: одне число замінено на 9\n";
+    cout << "\n  Тест 4: одне число замінено на 9\n";
     int originalVal = *(g->field + 0);
     *(g->field + 0) = 9;
     printField(g, true);
     bool t3 = runTests(g);
     if (!t3) cout << "  Система побачила невірне число\n";
-    else     cout << "  Помилка: система пропустила невірне число\n";
+    else {
+        cout << "  Помилка: система пропустила невірне число\n";
+        allDeveloperTestsPassed = false;
+    }
     *(g->field + 0) = originalVal;
-
-    cout << "\n  Тест 4: одна кісточка розірвана на два кути поля\n";
+    cout << "\n  Тест 5: одна кісточка розірвана на два кути поля\n";
     int orig1 = *(g->placement + 0);
     int orig2 = *(g->placement + (ROWS * COLS - 1));
     *(g->placement + 0) = 5;
@@ -805,20 +839,25 @@ void runDeveloperTests(GameData* g) {
     printField(g, true);
     bool t4 = runTests(g);
     if (!t4) cout << "  Система побачила розірване доміно\n";
-    else     cout << "  Помилка: система не помітила розірване доміно\n";
+    else {
+        cout << "  Помилка: система не помітила розірване доміно\n";
+        allDeveloperTestsPassed = false;
+    }
     *(g->placement + 0) = orig1;
     *(g->placement + (ROWS * COLS - 1)) = orig2;
-
     cout << "\n";
     printLine(w);
-    printMenuItem("  Усі модулі захисту працюють коректно", w);
+    if (allDeveloperTestsPassed)
+        printMenuItem("  Усі інженерні тести пройдено", w);
+    else
+        printMenuItem("  Частина інженерних тестів не пройдена", w);
     printLine(w);
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: fillBoardRandomly
- Synopsis: рекурсивно заповнює поле випадковими кісточками.
-           Використовується генератором нових завдань.
+Function: fillBoardRandomly
+Synopsis: recursively fills the field with random valid dominoes for
+          generating new playable tasks.
 ---------------------------------------------------------------------[>]-*/
 bool fillBoardRandomly(GameData* g) {
     int bestR = -1, bestC = -1;
@@ -831,12 +870,9 @@ bool fillBoardRandomly(GameData* g) {
         if (bestR != -1) break;
     }
     if (bestR == -1) return true;
-
     int r = bestR, c = bestC;
     int dr[] = {0, 1, 0, -1};
     int dc[] = {1, 0, -1, 0};
-
-    // перемішуємо напрямки для випадковості результату
     int dirs[4] = {0, 1, 2, 3};
     for (int i = 0; i < 4; i++) {
         int j = i + rand() % (4 - i);
@@ -848,8 +884,6 @@ bool fillBoardRandomly(GameData* g) {
         if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS &&
             *(g->active + nr * COLS + nc) &&
             *(g->placement + nr * COLS + nc) == -1) {
-
-            // перемішуємо кісточки для випадковості
             int doms[28];
             for (int k = 0; k < 28; k++) doms[k] = k;
             for (int k = 0; k < 28; k++) {
@@ -863,19 +897,14 @@ bool fillBoardRandomly(GameData* g) {
                     int v1 = (g->dominoes + idx)->a;
                     int v2 = (g->dominoes + idx)->b;
                     if (rand() % 2 == 0) { int tmp = v1; v1 = v2; v2 = tmp; }
-
                     if (!isTouchAllowed(g, r, c, v1, idx) ||
                         !isTouchAllowed(g, nr, nc, v2, idx)) continue;
-
                     *(g->used + idx) = true;
                     *(g->placement + r * COLS + c) = idx;
                     *(g->placement + nr * COLS + nc) = idx;
                     *(g->field + r * COLS + c) = v1;
                     *(g->field + nr * COLS + nc) = v2;
-
                     if (fillBoardRandomly(g)) return true;
-
-                    // відкатуємось
                     *(g->used + idx) = false;
                     *(g->placement + r * COLS + c) = -1;
                     *(g->placement + nr * COLS + nc) = -1;
@@ -889,17 +918,15 @@ bool fillBoardRandomly(GameData* g) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: generateTask
- Synopsis: генерує нове випадкове завдання — заповнює поле, збирає підказки
-           з унікальних значень кожного рядка і колонки, потім очищає розв'язок.
+Function: generateTask
+Synopsis: creates a new puzzle by generating a valid completed board,
+          deriving hints from it and clearing the visible solution.
 ---------------------------------------------------------------------[>]-*/
 void generateTask(GameData* g) {
     generateDominoes(g, 6);
-
     for (int i = 0; i < ROWS; i++) (*(g->rowHints + i)).clear();
     for (int i = 0; i < COLS; i++) (*(g->colHints + i)).clear();
     resetField(g);
-
     cout << "\n  Генерую нове поле...\n";
     if (fillBoardRandomly(g)) {
         for (int r = 0; r < ROWS; r++) {
@@ -938,21 +965,18 @@ void generateTask(GameData* g) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: autoSolve
- Synopsis: скидає поле, запускає solve() і виводить результат з часом пошуку.
-           Після знаходження розв'язку запускає runTests для верифікації.
+Function: autoSolve
+Synopsis: resets the board, starts automatic solving, prints the result,
+          execution time and final validation report.
 ---------------------------------------------------------------------[>]-*/
 void autoSolve(GameData* g) {
     generateDominoes(g, 6);
     resetField(g);
-
     cout << "\n  Шукаю розв'язок...\n";
-
     auto start   = chrono::high_resolution_clock::now();
     bool success = solve(g);
     auto end     = chrono::high_resolution_clock::now();
     chrono::duration<double> elapsed = end - start;
-
     if (success) {
         cout << "  Розв'язок знайдено\n";
         int w = 55;
@@ -970,6 +994,7 @@ void autoSolve(GameData* g) {
             }
         }
         printLine(w);
+        printDominoPositions(g);
         cout << "  Час пошуку: " << elapsed.count() << " с\n";
         cout << "  Процесор: Intel(R) Core(TM) i5-9300HF CPU @ 2.40GHz\n";
         cout << "  Пам'ять: 8 ГБ\n";
@@ -983,9 +1008,9 @@ void autoSolve(GameData* g) {
 }
 
 /* ----------------------------------------------------------------------[<]-
- Function: userSolve
- Synopsis: режим гравця — ручне розміщення кісточок з перевірками
-           активності, сусідства, зайнятості і унікальності.
+Function: userSolve
+Synopsis: lets the user place dominoes manually with the same validation
+          rules that are used by the automatic solver.
 ---------------------------------------------------------------------[>]-*/
 void userSolve(GameData* g) {
     cout << "\n";
@@ -993,43 +1018,43 @@ void userSolve(GameData* g) {
     printLine(w);
     printMenuItem("  Режим гравця", w);
     printLine(w);
-    cout << "\n  Вводьте координати двох клітинок та значення\n";
-    cout << "  Введіть 0 щоб завершити\n\n";
-
+    cout << "\n  Вводьте координати двох клітинок та значення половинок доміно.\n";
+    cout << "  Рядки і колонки вводяться за номерами, які показані над полем.\n";
+    cout << "  Введіть 0 у полі рядка першої клітинки, щоб завершити режим гравця.\n\n";
     generateDominoes(g, 6);
     resetField(g);
-    bool userUsed[28] = {};
-
     while (true) {
         printField(g, true);
-
         cout << "\n  Рядок першої клітинки (0 = вихід): ";
         int r1 = safeReadInt(0, ROWS);
-        if (r1 == 0) break;
+        if (r1 == 0) {
+            cout << "\n  Режим гравця завершено. Поточна перевірка поля:\n";
+            runTests(g);
+            break;
+        }
 
         cout << "  Колонка першої клітинки: ";
         int c1 = safeReadInt(1, COLS);
-
         cout << "  Рядок другої клітинки: ";
         int r2 = safeReadInt(1, ROWS);
-
         cout << "  Колонка другої клітинки: ";
         int c2 = safeReadInt(1, COLS);
         r1--; c1--; r2--; c2--;
-
         if (!*(g->active + r1 * COLS + c1) || !*(g->active + r2 * COLS + c2)) {
-            cout << "  Одна з клітинок неактивна\n";
+            cout << "  Одна з клітинок неактивна. Обирайте тільки клітинки, які належать фігурі поля.\n";
             continue;
         }
+
         bool adjacent = (r1 == r2 && abs(c1 - c2) == 1) ||
                         (c1 == c2 && abs(r1 - r2) == 1);
         if (!adjacent) {
-            cout << "  Клітинки мають бути сусідніми\n";
+            cout << "  Клітинки мають бути сусідніми по горизонталі або вертикалі.\n";
             continue;
         }
+
         if (*(g->placement + r1 * COLS + c1) != -1 ||
             *(g->placement + r2 * COLS + c2) != -1) {
-            cout << "  Одна з клітинок вже зайнята\n";
+            cout << "  Одна з клітинок вже зайнята іншою кісточкою.\n";
             continue;
         }
 
@@ -1037,36 +1062,25 @@ void userSolve(GameData* g) {
         int val1 = safeReadInt(0, 6);
         cout << "  Значення другої половинки (0-6): ";
         int val2 = safeReadInt(0, 6);
-
         int idx = *(g->dominoIndexMap + val1 * 7 + val2);
-        if (*(userUsed + idx)) {
-            cout << "  Кісточка " << val1 << "-" << val2 << " вже використана\n";
+        if (*(g->used + idx)) {
+            cout << "  Кісточка " << val1 << "-" << val2 << " вже використана.\n";
             continue;
         }
 
-        if (!isHintAllowed(g, r1, c1, val1) ||
-            !isHintAllowed(g, r2, c2, val2)) {
-            cout << "  Порушено підказки рядка або колонки: у цьому напрямку така цифра зайва\n";
+        if (!canPlaceDomino(g, r1, c1, r2, c2, val1, val2)) {
+            cout << "  Таку кісточку не можна поставити в ці клітинки.\n";
+            cout << "  Можливі причини: порушено підказки, правило дотику або проміжну перевірку рядка/колонки.\n";
             continue;
         }
 
-        if (!isTouchAllowed(g, r1, c1, val1, idx) ||
-            !isTouchAllowed(g, r2, c2, val2, idx)) {
-            cout << "  Порушено правило дотику: сусідні половинки різних доміно мають бути однакові\n";
-            continue;
-        }
-
-        *(g->placement + r1 * COLS + c1) = idx;
-        *(g->placement + r2 * COLS + c2) = idx;
-        *(g->field + r1 * COLS + c1)     = val1;
-        *(g->field + r2 * COLS + c2)     = val2;
-        *(userUsed + idx) = true;
-        cout << "  Кісточку " << val1 << "-" << val2 << " розміщено\n";
-
+        placeDomino(g, r1, c1, r2, c2, val1, val2, idx);
+        cout << "  Кісточку " << val1 << "-" << val2 << " розміщено.\n";
         bool allPlaced = true;
         for (int i = 0; i < ROWS * COLS; i++) {
             if (*(g->active + i) && *(g->placement + i) == -1) {
-                allPlaced = false; break;
+                allPlaced = false;
+                break;
             }
         }
 
@@ -1074,7 +1088,7 @@ void userSolve(GameData* g) {
             if (runTests(g))
                 cout << "\n  Правильно, головоломку розв'язано!\n";
             else
-                cout << "\n  Поле заповнене, але є помилки у розміщенні\n";
+                cout << "\n  Поле заповнене, але є помилки у розміщенні.\n";
             break;
         }
     }
